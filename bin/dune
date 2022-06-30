@@ -1,0 +1,4 @@
+(executable
+ (public_name ml_lang)
+ (name main)
+ (libraries ml_lang))
