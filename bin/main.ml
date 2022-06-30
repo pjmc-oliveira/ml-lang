@@ -1,1 +1,3 @@
-let () = print_endline "Hello, World!"
+open Ml_lang
+
+let () = Hello.say_hello ()
