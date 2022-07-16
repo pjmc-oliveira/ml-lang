@@ -1,10 +1,11 @@
 module Combinator = struct
-  type 'a t = Token.t list -> ('a * Token.t list, Error.t list) result
+  type tokens = (Token.t * Loc.t) list
+  type 'a t = tokens -> ('a * tokens, Error.t list) result
 
   let pure x : 'a t = fun tks -> Ok (x, tks)
   let fail e : 'a t = fun _ -> Error e
-  let error lines : Error.t = { kind = Parser; lines; location = None }
-  let fail_lines lines = fail [ error lines ]
+  let error ?location lines : Error.t = { kind = Parser; lines; location }
+  let fail_lines ?location lines = fail [ error ?location lines ]
   let parse (p : 'a t) tks = p tks
 
   let map f (p : 'a t) : 'b t =
@@ -44,11 +45,23 @@ module Combinator = struct
 
   let token : Token.t t = function
     | [] -> Error [ error [ Text "Unexpected EOF" ] ]
-    | tk :: tks -> Ok (tk, tks)
+    | (tk, _loc) :: tks -> Ok (tk, tks)
+
+  let position : Loc.t t =
+   fun tks ->
+    match tks with
+    | [] -> Error [ error [ Text "Unexpected EOF" ] ]
+    | (_tk, loc) :: _tks -> Ok (loc, tks)
+
+  let span (p : 'a t) : ('a * Loc.t) t =
+    let* p1 = position in
+    let* res = p in
+    let* p2 = position in
+    pure (res, Loc.between p1 p2)
 
   let eof : unit t = function
     | [] -> Error [ error [ Text "Unexpected EOF" ] ]
-    | [ Eof ] -> Ok ((), [])
+    | [ (Eof, _loc) ] -> Ok ((), [])
     | _ -> Error [ error [ Text "Expected EOF" ] ]
 
   let expect expected =
@@ -56,7 +69,8 @@ module Combinator = struct
     if tk = expected then
       pure ()
     else
-      fail_lines
+      let* pos = position in
+      fail_lines ~location:pos
         [
           Text ("Expected: " ^ Token.to_string expected);
           Text ("But got: " ^ Token.to_string tk);
@@ -67,7 +81,8 @@ module Combinator = struct
     match tk with
     | Ident s -> pure s
     | _ ->
-        fail_lines
+        let* pos = position in
+        fail_lines ~location:pos
           [
             Text "Expected identifier"; Text ("But got: " ^ Token.to_string tk);
           ]

@@ -4,6 +4,11 @@ let of_string text = { text; index = 0 }
 let is_done src = String.length src.text <= src.index
 let position src = Loc.Pos src.index
 
+let between src1 src2 =
+  let p1 = position src1 in
+  let p2 = position src2 in
+  Loc.between p1 p2
+
 let next src =
   if src.index >= String.length src.text then
     None
