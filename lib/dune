@@ -1,2 +1,4 @@
 (library
- (name ml_lang))
+ (name ml_lang)
+ (preprocess
+  (pps ppx_deriving.show)))

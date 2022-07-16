@@ -1,1 +1,0 @@
-let say_hello () = print_string "Hello, World!"
