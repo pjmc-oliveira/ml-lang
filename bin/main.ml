@@ -17,5 +17,5 @@ let report res =
       let lines = String.concat "\n" lines in
       "Ok:\n" ^ lines
 
-let () = print_string (report (run "1{} hello {}"))
+let () = print_string (report (run "1 module def defi hello {}"))
 (* let () = prerr_string "Hello, World!" *)

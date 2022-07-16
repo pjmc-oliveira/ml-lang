@@ -1,5 +1,10 @@
 let fail lines : ('a, Error.t) result = Error { kind = Lexer; lines }
 
+module StrMap = Map.Make (String)
+
+let keywords =
+  [ ("module", Token.Module); ("def", Def) ] |> List.to_seq |> StrMap.of_seq
+
 let token src : (Token.t * Source.t, Error.t) result =
   match Source.next src with
   | None -> Ok (Eof, src)
@@ -8,9 +13,11 @@ let token src : (Token.t * Source.t, Error.t) result =
       | '=' -> Ok (Equal, src')
       | '{' -> Ok (LeftBrace, src')
       | '}' -> Ok (RightBrace, src')
-      | _ when Char.is_alpha c ->
+      | _ when Char.is_alpha c -> (
           let name, src' = Source.take_while Char.is_alphanum src in
-          Ok (Ident name, src')
+          match StrMap.find_opt name keywords with
+          | None -> Ok (Ident name, src')
+          | Some kw -> Ok (kw, src'))
       | _ when Char.is_digit c ->
           let digits, src'' = Source.take_while Char.is_alphanum src in
           if String.exists Char.is_alpha digits then
