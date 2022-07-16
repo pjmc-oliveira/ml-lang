@@ -1,7 +1,7 @@
 include Stdlib.Result
 
 module Syntax = struct
-  let ( let+ ) = Stdlib.Result.bind
+  let ( let+ ) = Stdlib.Result.map
 
   let ( and+ ) tx ty =
     match (tx, ty) with
