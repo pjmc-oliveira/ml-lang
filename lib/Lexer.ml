@@ -1,4 +1,5 @@
-let fail lines : ('a, Error.t) result = Error { kind = Lexer; lines }
+let fail location lines : ('a, Error.t) result =
+  Error { kind = Lexer; lines; location }
 
 module StrMap = Map.Make (String)
 
@@ -21,10 +22,13 @@ let token src : (Token.t * Source.t, Error.t) result =
       | _ when Char.is_digit c ->
           let digits, src'' = Source.take_while Char.is_alphanum src in
           if String.exists Char.is_alpha digits then
-            fail
+            let start = Source.position src in
+            let stop = Source.position src'' in
+            let location = Loc.between start stop in
+            fail (Some start)
               [
                 Text "Invalid number:";
-                Code digits;
+                Code (digits, location);
                 Text "Numbers cannot contain letters";
               ]
           else
@@ -32,7 +36,11 @@ let token src : (Token.t * Source.t, Error.t) result =
             Ok (Int number, src'')
       | _ ->
           let str = String.make 1 c in
-          fail [ Text "Unexpected character: "; Code str ])
+          let start = Source.position src in
+          let stop = Source.position src' in
+          let location = Loc.between start stop in
+          fail (Some start)
+            [ Text "Unexpected character: "; Code (str, location) ])
 
 let space src : Source.t = Source.drop_while Char.is_space src
 
@@ -48,4 +56,4 @@ let tokens src : (Token.t list, Error.t list) result =
       | Ok (tk, s') -> loop (tk :: tks) errs (space s')
       | Error err -> loop tks (err :: errs) (Source.drop s)
   in
-  loop [] [] src
+  loop [] [] (space src)

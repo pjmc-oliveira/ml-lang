@@ -2,6 +2,7 @@ type t = { text : string; index : int } [@@deriving show]
 
 let of_string text = { text; index = 0 }
 let is_done src = String.length src.text <= src.index
+let position src = Loc.Pos src.index
 
 let next src =
   if src.index >= String.length src.text then

@@ -3,7 +3,7 @@ module Combinator = struct
 
   let pure x : 'a t = fun tks -> Ok (x, tks)
   let fail e : 'a t = fun _ -> Error e
-  let error lines : Error.t = { kind = Parser; lines }
+  let error lines : Error.t = { kind = Parser; lines; location = None }
   let fail_lines lines = fail [ error lines ]
   let parse (p : 'a t) tks = p tks
 
