@@ -5,7 +5,7 @@ module Line = struct
 end
 
 module Kind = struct
-  type t = Lexer [@@deriving show]
+  type t = Lexer | Parser [@@deriving show]
 
   let to_string = show
 end
