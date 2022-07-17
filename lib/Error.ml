@@ -3,7 +3,7 @@ module Line = struct
 
   let to_string = function
     | Text str -> str
-    | Code (code, loc) -> string_of_int (Source.Span.start loc) ^ " |   " ^ code
+    | Code (code, loc) -> Source.Span.to_string loc ^ " |   " ^ code
 end
 
 module Kind = struct
@@ -21,7 +21,7 @@ let to_string { kind; lines; location } =
   let kind = Kind.to_string kind ^ " error" in
   let location =
     match location with
-    | Some location -> "at " ^ string_of_int (Source.Span.start location)
+    | Some location -> "at " ^ Source.Span.to_string location
     | None -> ""
   in
   String.concat "\n" [ kind; lines; location ]
