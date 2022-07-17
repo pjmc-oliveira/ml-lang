@@ -1,4 +1,4 @@
-type t = Pos of int | Span of { start : int; length : int }
+type t = Pos of int | Span of { start : int; length : int } [@@deriving show]
 
 let between start stop =
   let start = match start with Pos start | Span { start; _ } -> start in

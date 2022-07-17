@@ -1,5 +1,5 @@
 module Line = struct
-  type t = Text of string | Code of string * Loc.t
+  type t = Text of string | Code of string * Loc.t [@@deriving show]
 
   let to_string = function
     | Text str -> str
@@ -12,9 +12,8 @@ module Kind = struct
   let to_string = function Lexer -> "Lexer" | Parser -> "Parser"
 end
 
-type line = Line.t
-type kind = Kind.t
-type t = { kind : kind; lines : line list; location : Loc.t option }
+type t = { kind : Kind.t; lines : Line.t list; location : Loc.t option }
+[@@deriving show]
 
 let to_string { kind; lines; location } =
   let lines = List.map (fun ln -> "  " ^ Line.to_string ln) lines in
