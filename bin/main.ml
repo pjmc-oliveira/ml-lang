@@ -12,9 +12,9 @@ let report res =
   | Error errs ->
       let lines = List.map Error.to_string errs in
       let lines = String.concat "\n\n" lines in
-      "Error:\n" ^ lines
-  | Ok m -> "Ok:\n" ^ Ast.show_module_ m
+      "Failure:\n" ^ lines
+  | Ok m -> "Success:\n" ^ Ast.show_module_ m
 
-let source = "\nmodule Hello = {\n  def hello = 1 def bye = 2\n}\n"
+let source = "\nmodule Hello = {\n  def = 1 def bye = 2\n}\n"
 let () = print_string (report (run source))
 (* let () = prerr_string "Hello, World!" *)

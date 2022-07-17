@@ -9,7 +9,7 @@ end
 module Kind = struct
   type t = Lexer | Parser [@@deriving show]
 
-  let to_string = show
+  let to_string = function Lexer -> "Lexer" | Parser -> "Parser"
 end
 
 type line = Line.t
@@ -17,7 +17,7 @@ type kind = Kind.t
 type t = { kind : kind; lines : line list; location : Loc.t option }
 
 let to_string { kind; lines; location } =
-  let lines = List.map Line.to_string lines in
+  let lines = List.map (fun ln -> "  " ^ Line.to_string ln) lines in
   let lines = String.concat "\n" lines in
   let kind = Kind.to_string kind ^ " error" in
   let location =
@@ -25,4 +25,4 @@ let to_string { kind; lines; location } =
     | Some location -> "at " ^ string_of_int (Loc.start location)
     | None -> ""
   in
-  String.concat "\n" [ lines; kind; location ]
+  String.concat "\n" [ kind; lines; location ]

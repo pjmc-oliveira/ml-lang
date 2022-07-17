@@ -9,4 +9,12 @@ type t =
   | Eof
 [@@deriving show]
 
-let to_string = show
+let to_string = function
+  | Module -> "module"
+  | Ident s -> s
+  | Equal -> "="
+  | LeftBrace -> "{"
+  | RightBrace -> "}"
+  | Def -> "def"
+  | Int n -> string_of_int n
+  | Eof -> "<eof>"
