@@ -4,7 +4,7 @@ open Result.Syntax
 let run str =
   let src = Source.of_string str in
   let* tks = Lexer.tokens src in
-  let* m, _tks' = Parser.(parse module_ tks) in
+  let* m = Parser.(parse module_ tks) in
   Ok m
 
 let report res =
@@ -15,6 +15,10 @@ let report res =
       "Failure:\n" ^ lines
   | Ok m -> "Success:\n" ^ Ast.show_module_ m
 
-let source = "\nmodule Hello = {\n  def = 1 def bye = 2\n}\n"
+let source = "\nmodule Hello = {\n  def hello = 1\n  def bye = 2\n}\n"
+
+(* TODO *)
+(* let source = "\nmodule Hello = {\n  def = 1 def = 1\n  def bye = 2\n}\n" *)
+
+(* let source = "\nmodule Hello = {}\n" *)
 let () = print_string (report (run source))
-(* let () = prerr_string "Hello, World!" *)

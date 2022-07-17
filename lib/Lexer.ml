@@ -8,7 +8,7 @@ let keywords =
 
 let token src : (Token.t * Loc.t * Source.t, Error.t) result =
   match Source.next src with
-  | None -> Ok (Eof, Source.position src, src)
+  | None -> fail [ Text "Unexpected EOF" ]
   | Some (c, src') -> (
       let span = Source.between src src' in
       match c with
@@ -46,7 +46,7 @@ let tokens src : ((Token.t * Loc.t) list, Error.t list) result =
   let rec loop tks errs s =
     if Source.is_done s then
       if errs = [] then
-        Ok (List.rev ((Token.Eof, Source.position s) :: tks))
+        Ok (List.rev tks)
       else
         Error (List.rev errs)
     else

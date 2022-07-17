@@ -6,7 +6,6 @@ type t =
   | RightBrace
   | Def
   | Int of int
-  | Eof
 [@@deriving show]
 
 let to_string = function
@@ -17,4 +16,3 @@ let to_string = function
   | RightBrace -> "}"
   | Def -> "def"
   | Int n -> string_of_int n
-  | Eof -> "<eof>"
