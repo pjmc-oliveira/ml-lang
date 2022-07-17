@@ -1,5 +1,5 @@
 module Combinator = struct
-  type tokens = (Token.t * Loc.t) list
+  type tokens = (Token.t * Source.span) list
   type errors = Error.t list
 
   module Consumed = struct
@@ -93,17 +93,17 @@ module Combinator = struct
     | [] -> (Unconsumed, Error [ error [ Text "Unexpected EOF" ] ])
     | (tk, _loc) :: tks -> (Consumed, Ok (tk, tks))
 
-  let position : Loc.t t =
+  let position : Source.span t =
    fun tks ->
     match tks with
     | [] -> (Unconsumed, Error [ error [ Text "Unexpected EOF" ] ])
     | (_tk, loc) :: _tks -> (Unconsumed, Ok (loc, tks))
 
-  let span (p : 'a t) : ('a * Loc.t) t =
+  let span (p : 'a t) : ('a * Source.span) t =
     let* p1 = position in
     let* res = p in
     let* p2 = position in
-    pure (res, Loc.between p1 p2)
+    pure (res, Source.Span.between p1 p2)
 
   let eof : unit t = function
     | [] -> (Unconsumed, Ok ((), []))

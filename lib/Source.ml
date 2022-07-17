@@ -1,13 +1,32 @@
-type t = { text : string; index : int } [@@deriving show]
+module Pos = struct
+  type t = int [@@deriving show]
+end
+
+module Span = struct
+  type t = { index : int; length : int } [@@deriving show]
+
+  let from start ~to_:stop = { index = start; length = stop - start }
+
+  let between s1 s2 =
+    let index = s1.index in
+    let length = s2.index + s2.length - index in
+    { index; length }
+
+  let start { index; _ } = index
+end
+
+type t = { text : string; index : Pos.t } [@@deriving show]
+type pos = Pos.t
+type span = Span.t
 
 let of_string text = { text; index = 0 }
 let is_done src = String.length src.text <= src.index
-let position src = Loc.Pos src.index
+let position src : Pos.t = src.index
 
 let between src1 src2 =
   let p1 = position src1 in
   let p2 = position src2 in
-  Loc.between p1 p2
+  Span.from p1 ~to_:p2
 
 let next src =
   if src.index >= String.length src.text then

@@ -1,9 +1,9 @@
 module Line = struct
-  type t = Text of string | Code of string * Loc.t [@@deriving show]
+  type t = Text of string | Code of string * Source.Span.t [@@deriving show]
 
   let to_string = function
     | Text str -> str
-    | Code (code, loc) -> string_of_int (Loc.start loc) ^ " |   " ^ code
+    | Code (code, loc) -> string_of_int (Source.Span.start loc) ^ " |   " ^ code
 end
 
 module Kind = struct
@@ -12,7 +12,7 @@ module Kind = struct
   let to_string = function Lexer -> "Lexer" | Parser -> "Parser"
 end
 
-type t = { kind : Kind.t; lines : Line.t list; location : Loc.t option }
+type t = { kind : Kind.t; lines : Line.t list; location : Source.Span.t option }
 [@@deriving show]
 
 let to_string { kind; lines; location } =
@@ -21,7 +21,7 @@ let to_string { kind; lines; location } =
   let kind = Kind.to_string kind ^ " error" in
   let location =
     match location with
-    | Some location -> "at " ^ string_of_int (Loc.start location)
+    | Some location -> "at " ^ string_of_int (Source.Span.start location)
     | None -> ""
   in
   String.concat "\n" [ kind; lines; location ]

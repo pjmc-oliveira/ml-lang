@@ -6,7 +6,7 @@ module StrMap = Map.Make (String)
 let keywords =
   [ ("module", Token.Module); ("def", Def) ] |> List.to_seq |> StrMap.of_seq
 
-let token src : (Token.t * Loc.t * Source.t, Error.t) result =
+let token src : (Token.t * Source.span * Source.t, Error.t) result =
   match Source.next src with
   | None -> fail [ Text "Unexpected EOF" ]
   | Some (c, src') -> (
@@ -42,7 +42,7 @@ let token src : (Token.t * Loc.t * Source.t, Error.t) result =
 
 let space src : Source.t = Source.drop_while Char.is_space src
 
-let tokens src : ((Token.t * Loc.t) list, Error.t list) result =
+let tokens src : ((Token.t * Source.span) list, Error.t list) result =
   let rec loop tks errs s =
     if Source.is_done s then
       if errs = [] then
