@@ -19,6 +19,7 @@ let fail (e : 'e) : ('a, 's, 'e) t = fun _ -> Error e
 let get : ('s, 's, 'e) t = fun s -> Ok (s, s)
 let set s : (unit, 's, 'e) t = fun _ -> Ok ((), s)
 let mut f : (unit, 's, 'e) t = fun s -> Ok ((), f s)
+let scope (s : 's) (p : ('a, 's, 'e) t) : ('a, 's, 'e) t = fun _ -> p s
 
 module Syntax = struct
   let ( let* ) = bind
