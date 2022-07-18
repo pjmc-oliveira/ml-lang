@@ -3,11 +3,22 @@ module Expr = struct
     | Const of { value : int; span : Source.Span.t }
     | Var of { name : string; span : Source.Span.t }
   [@@deriving show]
+
+  let to_ast e : Ast.Expr.t =
+    match e with
+    | Const { value; _ } -> Ast.Expr.Const { value }
+    | Var { name; _ } -> Ast.Expr.Var { name }
 end
 
 module Binding = struct
   type t = Def of { name : string; expr : Expr.t; span : Source.Span.t }
   [@@deriving show]
+
+  let to_ast b : Ast.Binding.t =
+    match b with
+    | Def { name; expr; _ } ->
+        let expr = Expr.to_ast expr in
+        Ast.Binding.Def { name; expr }
 end
 
 module Module = struct
@@ -18,6 +29,12 @@ module Module = struct
         span : Source.Span.t;
       }
   [@@deriving show]
+
+  let to_ast m : Ast.Module.t =
+    match m with
+    | Module { name; bindings; _ } ->
+        let bindings = List.map Binding.to_ast bindings in
+        Ast.Module.Module { name; bindings }
 end
 
 type expr = Expr.t
