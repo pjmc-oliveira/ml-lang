@@ -1,3 +1,4 @@
 profile = default
 if-then-else = fit-or-vertical
+break-string-literals = never
 version = 0.21.0
