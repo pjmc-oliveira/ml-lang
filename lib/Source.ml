@@ -40,11 +40,12 @@ let between src1 src2 =
   Span.from p1 ~to_:p2
 
 let next src =
-  if src.position.index >= String.length src.text then
+  if is_done src then
     None
   else
-    let char = String.get src.text src.position.index in
-    Some (char, { src with position = Pos.step char src.position })
+    let ch = src.text.[src.position.index] in
+    let position = Pos.step ch src.position in
+    Some (ch, { src with position })
 
 let drop_while predicate src : t =
   let start = src.position.index in
@@ -67,4 +68,7 @@ let take_while predicate src : string * t =
   let str = String.sub src.text start (stop - start) in
   (str, src')
 
-let drop src : t = match next src with None -> src | Some (_, src') -> src'
+let drop src : t =
+  match next src with
+  | None -> src
+  | Some (_, src') -> src'

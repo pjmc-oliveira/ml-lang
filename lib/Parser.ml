@@ -5,7 +5,10 @@ module Combinator = struct
   module Consumed = struct
     type t = Consumed | Unconsumed
 
-    let both l r = match l with Consumed -> Consumed | _ -> r
+    let both l r =
+      match l with
+      | Consumed -> Consumed
+      | _ -> r
   end
 
   type 'a t = tokens -> Consumed.t * ('a * tokens, errors) result

@@ -7,12 +7,17 @@ type ty_ctx = Type.t TyCtx.t
 type 'a t = ty_ctx -> ('a * ty_ctx, Error.t list) result
 
 let solve (s : 'a t) (ctx : ty_ctx) : ('a, Error.t list) result =
-  match s ctx with Ok (x, _) -> Ok x | Error es -> Error es
+  match s ctx with
+  | Ok (x, _) -> Ok x
+  | Error es -> Error es
 
 let pure (x : 'a) : 'a t = fun ctx -> Ok (x, ctx)
 
 let bind (s : 'a t) (f : 'a -> 'b t) : 'b t =
- fun ctx -> match s ctx with Ok (x, ctx') -> (f x) ctx' | Error es -> Error es
+ fun ctx ->
+  match s ctx with
+  | Ok (x, ctx') -> (f x) ctx'
+  | Error es -> Error es
 
 let prod (tx : 'a t) (ty : 'b t) =
   bind tx (fun x -> bind ty (fun y -> pure (x, y)))
