@@ -8,6 +8,7 @@ module type S = sig
   val remove : key -> 'a t -> 'a t
   val of_list : (key * 'a) list -> 'a t
   val to_list : 'a t -> (key * 'a) list
+  val equal : ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
 end
 
 module type Ord = sig
@@ -28,4 +29,5 @@ module Make (Key : Ord) : S with type key = Key.t = struct
   let remove = KeyMap.remove
   let of_list pairs = KeyMap.of_seq (List.to_seq pairs)
   let to_list ctx = KeyMap.to_seq ctx |> List.of_seq
+  let equal = KeyMap.equal
 end

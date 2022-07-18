@@ -13,12 +13,17 @@ let string_of_result r =
   match r with
   | Ok ctx ->
       "Ok ["
-      ^ String.concat "\n"
+      ^ String.concat "; "
           (List.map
              (fun (name, ty) -> "( \"" ^ name ^ "\", " ^ Type.show ty ^ " )")
              (Solver.TyCtx.to_list ctx))
       ^ "]"
-  | Error e -> "Error " ^ String.concat "\n" (List.map Error.to_string e)
+  | Error e -> "Error [" ^ String.concat "\n" (List.map Error.to_string e) ^ "]"
+
+let ty_ctx_equal l r =
+  match (l, r) with
+  | Ok l, Ok r -> Solver.TyCtx.equal ( = ) l r
+  | _, _ -> l = r
 
 let test_solver label str ?initial_ctx expected_ctx =
   let initial_ctx =
@@ -27,9 +32,8 @@ let test_solver label str ?initial_ctx expected_ctx =
     | Some ctx -> ctx
   in
   label >:: fun _ ->
-  assert_equal (Ok expected_ctx)
+  assert_equal ~printer:string_of_result ~cmp:ty_ctx_equal (Ok expected_ctx)
     (solve_module str initial_ctx)
-    ~printer:string_of_result
 
 let suite =
   "Solver"
@@ -39,5 +43,8 @@ let suite =
            (Solver.TyCtx.of_list [ ("hello", Type.Int) ]);
          test_solver "two bindings"
            "module Hello = { def hello = 1 def bye = hello }"
+           (Solver.TyCtx.of_list [ ("hello", Type.Int); ("bye", Type.Int) ]);
+         test_solver "top-level define before use"
+           "module Hello = { def hello = bye def bye = 1 }"
            (Solver.TyCtx.of_list [ ("hello", Type.Int); ("bye", Type.Int) ]);
        ]

@@ -16,6 +16,12 @@ let solve_ctx (s : 'a t) (ctx : ty_ctx) : (ty_ctx, Error.t list) result =
   | Ok (_, ctx') -> Ok ctx'
   | Error es -> Error es
 
+let map (f : 'a -> 'b) (s : 'a t) : 'b t =
+ fun ctx ->
+  match s ctx with
+  | Ok (x, ctx') -> Ok (f x, ctx')
+  | Error e -> Error e
+
 let pure (x : 'a) : 'a t = fun ctx -> Ok (x, ctx)
 
 let bind (s : 'a t) (f : 'a -> 'b t) : 'b t =
@@ -32,6 +38,18 @@ let get : ty_ctx t = fun ctx -> Ok (ctx, ctx)
 let set ctx : unit t = fun _ -> Ok ((), ctx)
 let mut f : unit t = fun ctx -> Ok ((), f ctx)
 
+let alt (l : 'a t) (r : 'a t) : 'a t =
+ fun ctx ->
+  match l ctx with
+  | Ok (x, ctx') -> Ok (x, ctx')
+  | Error e1 -> (
+      match r ctx with
+      | Ok (y, ctx') -> Ok (y, ctx')
+      | Error e2 -> Error (e1 @ e2))
+
+let result (s : 'a t) : ('a, Error.t list) result t =
+  alt (map (fun x -> Ok x) s) (pure (Error []))
+
 module Syntax = struct
   let ( let* ) = bind
   let ( and* ) = prod
@@ -47,7 +65,7 @@ let traverse_list (f : 'a -> 'b t) (ls : 'a list) : 'b list t =
       pure (y :: ys))
     ls (pure [])
 
-let undound_var name span : Error.t =
+let unbound_var name span : Error.t =
   {
     kind = Error.Kind.Solver;
     location = Some span;
@@ -62,7 +80,7 @@ let expression (e : Cst.expr) : (Tast.expr * Type.t) t =
   | Var { name; span } -> (
       let* ctx = get in
       match TyCtx.lookup name ctx with
-      | None -> fail [ undound_var name span ]
+      | None -> fail [ unbound_var name span ]
       | Some type_ -> pure (Tast.Expr.Var { name; span; type_ }, type_))
 
 let binding (b : Cst.binding) : Tast.binding t =
@@ -72,8 +90,23 @@ let binding (b : Cst.binding) : Tast.binding t =
       let* _ = mut (TyCtx.insert name type_) in
       pure (Tast.Binding.Def { name; expr; span; type_ })
 
+let rec multiple_passes (remaining : int) (bs : Cst.binding list) :
+    Tast.binding list t =
+ fun ctx ->
+  match traverse_list (fun b -> result (binding b)) bs ctx with
+  | Ok (bs', ctx') ->
+      let current = List.length (List.filter Result.is_error bs') in
+      if current = 0 then
+        Ok (List.map Result.get_ok bs', ctx')
+      else if current < remaining then
+        multiple_passes current bs ctx'
+      else
+        let es = List.map Result.get_error (List.filter Result.is_error bs') in
+        Error (List.flatten es)
+  | Error es -> Error es
+
 let module_ (m : Cst.module_) : Tast.module_ t =
   match m with
   | Module { name; bindings; span } ->
-      let* bindings = traverse_list binding bindings in
+      let* bindings = multiple_passes (List.length bindings) bindings in
       pure (Tast.Module.Module { name; bindings; span })
