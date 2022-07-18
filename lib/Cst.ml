@@ -1,7 +1,7 @@
 module Expr = struct
   type t =
     | Const of { value : int; span : Source.Span.t }
-    | Var of { value : string; span : Source.Span.t }
+    | Var of { name : string; span : Source.Span.t }
   [@@deriving show]
 end
 

@@ -160,7 +160,7 @@ let atom =
   let* tk = token in
   match tk with
   | Int value -> pure (fun span -> Cst.Expr.Const { value; span })
-  | Ident value -> pure (fun span -> Cst.Expr.Var { value; span })
+  | Ident name -> pure (fun span -> Cst.Expr.Var { name; span })
   | _ -> fail_lines [ Text "Expected atom" ]
 
 let expression =
