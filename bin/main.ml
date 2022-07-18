@@ -13,7 +13,7 @@ let report res =
       let lines = List.map Error.to_string errs in
       let lines = String.concat "\n\n" lines in
       "Failure:\n" ^ lines
-  | Ok m -> "Success:\n" ^ Ast.show_module_ m
+  | Ok m -> "Success:\n" ^ Cst.Module.show m
 
 let source = "\nmodule Hello = {\n  def hello = 1\n  def bye = 2\n}\n"
 

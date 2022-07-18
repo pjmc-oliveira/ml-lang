@@ -1,5 +1,5 @@
 module Combinator = struct
-  type tokens = (Token.t * Source.span) list
+  type tokens = (Token.t * Source.span) list * Source.span option
   type errors = Error.t list
 
   module Consumed = struct
@@ -16,9 +16,9 @@ module Combinator = struct
   let fail_lines ?location lines = fail [ error ?location lines ]
 
   let parse (p : 'a t) tks : ('a, errors) result =
-    match p tks with
+    match p (tks, None) with
     | _, Error errs -> Error errs
-    | _, Ok (x, []) -> Ok x
+    | _, Ok (x, ([], _)) -> Ok x
     | _, Ok (x, _) ->
         print_string "Warning: Unnconsumed input\n";
         Ok x
@@ -90,14 +90,15 @@ module Combinator = struct
     loop Unconsumed [] []
 
   let token : Token.t t = function
-    | [] -> (Unconsumed, Error [ error [ Text "Unexpected EOF" ] ])
-    | (tk, _loc) :: tks -> (Consumed, Ok (tk, tks))
+    | [], _ -> (Unconsumed, Error [ error [ Text "Unexpected EOF" ] ])
+    | (tk, loc) :: tks, _ -> (Consumed, Ok (tk, (tks, Some loc)))
 
   let position : Source.span t =
    fun tks ->
     match tks with
-    | [] -> (Unconsumed, Error [ error [ Text "Unexpected EOF" ] ])
-    | (_tk, loc) :: _tks -> (Unconsumed, Ok (loc, tks))
+    | [], None -> (Unconsumed, Error [ error [ Text "Unexpected EOF" ] ])
+    | [], Some loc -> (Unconsumed, Ok (loc, tks))
+    | (_tk, loc) :: _tks, _ -> (Unconsumed, Ok (loc, tks))
 
   let span (p : 'a t) : ('a * Source.span) t =
     let* p1 = position in
@@ -106,7 +107,7 @@ module Combinator = struct
     pure (res, Source.Span.between p1 p2)
 
   let eof : unit t = function
-    | [] -> (Unconsumed, Ok ((), []))
+    | [], loc -> (Unconsumed, Ok ((), ([], loc)))
     | _ -> (Unconsumed, Error [ error [ Text "Expected EOF" ] ])
 
   let try_ p : 'a t =
@@ -158,30 +159,38 @@ let toplevel =
 let atom =
   let* tk = token in
   match tk with
-  | Int n -> pure (Ast.Const n)
-  | Ident s -> pure (Ast.Var s)
+  | Int value -> pure (fun span -> Cst.Expr.Const { value; span })
+  | Ident value -> pure (fun span -> Cst.Expr.Var { value; span })
   | _ -> fail_lines [ Text "Expected atom" ]
 
-let expression tks = atom tks
+let expression =
+  let* expr, sp = span atom in
+  pure (expr sp)
 
 let def =
   let* () = accept Def in
   let* name = identifier in
   let* () = expect Equal in
   let* expr = expression in
-  pure (Ast.Def { name; expr })
+  pure (fun span -> Cst.Binding.Def { name; expr; span })
 
-let binding = one_of (error [ Text "Expected binding" ]) [ def ]
+let binding =
+  let* b, sp = span (one_of (error [ Text "Expected binding" ]) [ def ]) in
+  pure (b sp)
 
 let module_ =
-  let* () = accept Module in
-  let* name = identifier in
-  let* () = expect Equal in
-  let* () = expect LeftBrace in
-  let* bindings = accumulate binding ~recover:toplevel in
-  (* let* bindings = many binding in *)
-  let* () = expect RightBrace in
-  let* () = eof in
-  pure (Ast.Module { name; bindings })
+  let parse_module =
+    let* () = accept Module in
+    let* name = identifier in
+    let* () = expect Equal in
+    let* () = expect LeftBrace in
+    let* bindings = accumulate binding ~recover:toplevel in
+    (* let* bindings = many binding in *)
+    let* () = expect RightBrace in
+    let* () = eof in
+    pure (fun span -> Cst.Module.Module { name; bindings; span })
+  in
+  let* m, sp = span parse_module in
+  pure (m sp)
 
 let parse = Combinator.parse
