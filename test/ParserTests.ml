@@ -100,14 +100,24 @@ let ast_tests =
   [
     test_parser_ast "empty module" "module Hello = {}"
       (Module.Module { name = "Hello"; bindings = [] });
-    test_parser_ast "empty module" "module Hello = { def hello = 1 }"
+    test_parser_ast "one definition" "module Hello = { def hello = 1 }"
       (Module.Module
          {
            name = "Hello";
            bindings =
              [ Binding.Def { name = "hello"; expr = Expr.Const { value = 1 } } ];
          });
+    test_parser_ast "one definition"
+      "module Hello = { def hello = 1 def bye = hello }"
+      (Module.Module
+         {
+           name = "Hello";
+           bindings =
+             [
+               Binding.Def { name = "hello"; expr = Expr.Const { value = 1 } };
+               Binding.Def { name = "bye"; expr = Expr.Var { name = "hello" } };
+             ];
+         });
   ]
 
 let suite = "Parser" >::: cst_tests @ ast_tests
-let () = run_test_tt_main suite

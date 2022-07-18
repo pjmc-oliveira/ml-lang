@@ -11,6 +11,11 @@ let solve (s : 'a t) (ctx : ty_ctx) : ('a, Error.t list) result =
   | Ok (x, _) -> Ok x
   | Error es -> Error es
 
+let solve_ctx (s : 'a t) (ctx : ty_ctx) : (ty_ctx, Error.t list) result =
+  match s ctx with
+  | Ok (_, ctx') -> Ok ctx'
+  | Error es -> Error es
+
 let pure (x : 'a) : 'a t = fun ctx -> Ok (x, ctx)
 
 let bind (s : 'a t) (f : 'a -> 'b t) : 'b t =
@@ -64,6 +69,7 @@ let binding (b : Cst.binding) : Tast.binding t =
   match b with
   | Def { name; expr; span } ->
       let* expr, type_ = expression expr in
+      let* _ = mut (TyCtx.insert name type_) in
       pure (Tast.Binding.Def { name; expr; span; type_ })
 
 let module_ (m : Cst.module_) : Tast.module_ t =
