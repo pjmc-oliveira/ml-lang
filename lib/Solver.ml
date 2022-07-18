@@ -1,10 +1,10 @@
 module TyCtx = Ctx.Make (String)
 
 type ty_ctx = Type.t TyCtx.t
+type 'a t = ('a, ty_ctx, Error.t list) StateResult.t
 
-(* open Result.Syntax *)
-
-type 'a t = ty_ctx -> ('a * ty_ctx, Error.t list) result
+module S = StateResult
+open StateResult.Syntax
 
 let solve (s : 'a t) (ctx : ty_ctx) : ('a, Error.t list) result =
   match s ctx with
@@ -16,28 +16,6 @@ let solve_ctx (s : 'a t) (ctx : ty_ctx) : (ty_ctx, Error.t list) result =
   | Ok (_, ctx') -> Ok ctx'
   | Error es -> Error es
 
-let map (f : 'a -> 'b) (s : 'a t) : 'b t =
- fun ctx ->
-  match s ctx with
-  | Ok (x, ctx') -> Ok (f x, ctx')
-  | Error e -> Error e
-
-let pure (x : 'a) : 'a t = fun ctx -> Ok (x, ctx)
-
-let bind (s : 'a t) (f : 'a -> 'b t) : 'b t =
- fun ctx ->
-  match s ctx with
-  | Ok (x, ctx') -> (f x) ctx'
-  | Error es -> Error es
-
-let prod (tx : 'a t) (ty : 'b t) =
-  bind tx (fun x -> bind ty (fun y -> pure (x, y)))
-
-let fail (e : Error.t list) : 'a t = fun _ -> Error e
-let get : ty_ctx t = fun ctx -> Ok (ctx, ctx)
-let set ctx : unit t = fun _ -> Ok ((), ctx)
-let mut f : unit t = fun ctx -> Ok ((), f ctx)
-
 let alt (l : 'a t) (r : 'a t) : 'a t =
  fun ctx ->
   match l ctx with
@@ -48,22 +26,15 @@ let alt (l : 'a t) (r : 'a t) : 'a t =
       | Error e2 -> Error (e1 @ e2))
 
 let result (s : 'a t) : ('a, Error.t list) result t =
-  alt (map (fun x -> Ok x) s) (pure (Error []))
-
-module Syntax = struct
-  let ( let* ) = bind
-  let ( and* ) = prod
-end
-
-open Syntax
+  alt (S.map (fun x -> Ok x) s) (S.pure (Error []))
 
 let traverse_list (f : 'a -> 'b t) (ls : 'a list) : 'b list t =
   List.fold_right
     (fun x ys_t ->
       let* y = f x in
       let* ys = ys_t in
-      pure (y :: ys))
-    ls (pure [])
+      S.pure (y :: ys))
+    ls (S.pure [])
 
 let unbound_var name span : Error.t =
   {
@@ -76,19 +47,19 @@ let expression (e : Cst.expr) : (Tast.expr * Type.t) t =
   match e with
   | Const { value; span } ->
       let type_ = Type.Int in
-      pure (Tast.Expr.Const { value; span; type_ }, type_)
+      S.pure (Tast.Expr.Const { value; span; type_ }, type_)
   | Var { name; span } -> (
-      let* ctx = get in
+      let* ctx = S.get in
       match TyCtx.lookup name ctx with
-      | None -> fail [ unbound_var name span ]
-      | Some type_ -> pure (Tast.Expr.Var { name; span; type_ }, type_))
+      | None -> S.fail [ unbound_var name span ]
+      | Some type_ -> S.pure (Tast.Expr.Var { name; span; type_ }, type_))
 
 let binding (b : Cst.binding) : Tast.binding t =
   match b with
   | Def { name; expr; span } ->
       let* expr, type_ = expression expr in
-      let* _ = mut (TyCtx.insert name type_) in
-      pure (Tast.Binding.Def { name; expr; span; type_ })
+      let* _ = S.mut (TyCtx.insert name type_) in
+      S.pure (Tast.Binding.Def { name; expr; span; type_ })
 
 let rec multiple_passes (remaining : int) (bs : Cst.binding list) :
     Tast.binding list t =
@@ -109,4 +80,4 @@ let module_ (m : Cst.module_) : Tast.module_ t =
   match m with
   | Module { name; bindings; span } ->
       let* bindings = multiple_passes (List.length bindings) bindings in
-      pure (Tast.Module.Module { name; bindings; span })
+      S.pure (Tast.Module.Module { name; bindings; span })
