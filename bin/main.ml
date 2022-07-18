@@ -5,6 +5,7 @@ let run str =
   let src = Source.of_string str in
   let* tks = Lexer.tokens src in
   let* m = Parser.(parse module_ tks) in
+  let* m = Solver.(solve (module_ m) TyCtx.empty) in
   Ok m
 
 let report res =
@@ -13,9 +14,13 @@ let report res =
       let lines = List.map Error.to_string errs in
       let lines = String.concat "\n\n" lines in
       "Failure:\n" ^ lines
-  | Ok m -> "Success:\n" ^ Cst.Module.show m
+  | Ok m -> "Success:\n" ^ Tast.Module.show m
 
-let source = "\nmodule Hello = {\n  def hello = 1\n  def bye = 2\n}\n"
+let source = "
+module Hello = {
+  def hello = 1
+  def bye = 2
+}"
 
 (* TODO *)
 (* let source = "\nmodule Hello = {\n  def = 1 def = 1\n  def bye = 2\n}\n" *)
