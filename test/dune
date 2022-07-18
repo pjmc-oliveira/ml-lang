@@ -1,2 +1,3 @@
 (test
- (name ml_lang))
+ (name parserTests)
+ (libraries ounit2 ml_lang))

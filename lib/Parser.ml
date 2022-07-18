@@ -96,17 +96,22 @@ module Combinator = struct
     | [], _ -> (Unconsumed, Error [ error [ Text "Unexpected EOF" ] ])
     | (tk, loc) :: tks, _ -> (Consumed, Ok (tk, (tks, Some loc)))
 
-  let position : Source.span t =
+  let next_position : Source.span t =
    fun tks ->
     match tks with
-    | [], None -> (Unconsumed, Error [ error [ Text "Unexpected EOF" ] ])
-    | [], Some loc -> (Unconsumed, Ok (loc, tks))
+    | [], _ -> (Unconsumed, Error [ error [ Text "Unexpected EOF" ] ])
     | (_tk, loc) :: _tks, _ -> (Unconsumed, Ok (loc, tks))
 
+  let last_position : Source.span t =
+   fun tks ->
+    match tks with
+    | _, None -> (Unconsumed, Error [ error [ Text "Unexpected EOF" ] ])
+    | _, Some loc -> (Unconsumed, Ok (loc, tks))
+
   let span (p : 'a t) : ('a * Source.span) t =
-    let* p1 = position in
+    let* p1 = next_position in
     let* res = p in
-    let* p2 = position in
+    let* p2 = last_position in
     pure (res, Source.Span.between p1 p2)
 
   let eof : unit t = function
@@ -131,7 +136,7 @@ module Combinator = struct
     if tk = expected then
       pure ()
     else
-      let* pos = position in
+      let* pos = last_position in
       fail_lines ~location:pos
         [
           Text ("Expected: " ^ Token.to_string expected);
@@ -145,7 +150,7 @@ module Combinator = struct
     match tk with
     | Ident s -> pure s
     | _ ->
-        let* pos = position in
+        let* pos = last_position in
         fail_lines ~location:pos
           [
             Text "Expected identifier"; Text ("But got: " ^ Token.to_string tk);
