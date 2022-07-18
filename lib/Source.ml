@@ -8,7 +8,7 @@ module Pos = struct
     { index = p.index + 1; line = p.line; column = p.column + 1 }
 
   let step c p = if c = '\n' then inc_line p else inc_column p
-  let step_many s p = String.fold_right step s p
+  let step_many s p = String.fold_left (fun p c -> step c p) p s
 end
 
 module Span = struct
