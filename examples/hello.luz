@@ -1,4 +1,4 @@
 module Hello = {
-  def hello = 1
+  def main = 1
   def bye = 2
 }

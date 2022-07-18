@@ -7,12 +7,13 @@ module Line = struct
 end
 
 module Kind = struct
-  type t = Lexer | Parser | Solver [@@deriving show]
+  type t = Lexer | Parser | Solver | Interpreter [@@deriving show]
 
   let to_string = function
     | Lexer -> "Lexer"
     | Parser -> "Parser"
     | Solver -> "Solver"
+    | Interpreter -> "Interpreter"
 end
 
 type t = { kind : Kind.t; lines : Line.t list; location : Source.Span.t option }

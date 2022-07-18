@@ -20,7 +20,8 @@ let run str =
   let* tks = Lexer.tokens src in
   let* m = Parser.(parse module_ tks) in
   let* m = Solver.(solve (module_ m) TyCtx.empty) in
-  Ok m
+  let* value = Interpreter.run m in
+  Ok value
 
 let report res =
   match res with
@@ -28,7 +29,7 @@ let report res =
       let lines = List.map Error.to_string errs in
       let lines = String.concat "\n\n" lines in
       "Failure:\n" ^ lines
-  | Ok m -> "Success:\n" ^ Tast.Module.show m
+  | Ok value -> "Success:\n" ^ Value.show value
 
 let source = read_lines [ "examples"; "hello.luz" ]
 
