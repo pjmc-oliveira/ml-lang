@@ -14,6 +14,9 @@ let rec expression (e : Cst.expr) (ctx : ty_ctx) :
   | Int { value; span } ->
       let type_ = Type.Int in
       Ok (Tast.Expr.Int { value; span; type_ }, type_)
+  | Bool { value; span } ->
+      let type_ = Type.Bool in
+      Ok (Tast.Expr.Bool { value; span; type_ }, type_)
   | Var { name; span } -> (
       match TyCtx.lookup name ctx with
       | Some type_ -> Ok (Tast.Expr.Var { name; span; type_ }, type_)

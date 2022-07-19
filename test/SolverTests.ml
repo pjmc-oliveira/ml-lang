@@ -64,6 +64,9 @@ let suite =
          test_solver "two bindings"
            "module Hello = { def hello = 1 def bye = hello }"
            (Solver.TyCtx.of_list [ ("hello", Type.Int); ("bye", Type.Int) ]);
+         test_solver "boolean literals"
+           "module Hello = { def hello = True def bye = False }"
+           (Solver.TyCtx.of_list [ ("hello", Type.Bool); ("bye", Type.Bool) ]);
          test_solver "top-level define before use"
            "module Hello = { def hello = bye def bye = 1 }"
            (Solver.TyCtx.of_list [ ("hello", Type.Int); ("bye", Type.Int) ]);

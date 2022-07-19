@@ -1,6 +1,7 @@
 module Expr = struct
   type t =
     | Int of { value : int; span : Source.Span.t; type_ : Type.t }
+    | Bool of { value : bool; span : Source.Span.t; type_ : Type.t }
     | Var of { name : string; span : Source.Span.t; type_ : Type.t }
     | Let of {
         name : string;

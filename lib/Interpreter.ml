@@ -32,6 +32,7 @@ let defer (expr : Tast.expr) : Value.t t =
 let rec eval (e : Tast.expr) : Value.t t =
   match e with
   | Int { value; _ } -> S.pure (Value.Int value)
+  | Bool { value; _ } -> S.pure (Value.Bool value)
   | Var { name; span; _ } ->
       let* value = lookup span name in
       let* value = force value in
@@ -44,6 +45,7 @@ let rec eval (e : Tast.expr) : Value.t t =
 and force (v : Value.t) : Value.t t =
   match v with
   | Int n -> S.pure (Value.Int n)
+  | Bool b -> S.pure (Value.Bool b)
   | Thunk { ctx; expr } -> S.scope ctx (eval expr)
 
 let binding (b : Tast.binding) : Value.t t =

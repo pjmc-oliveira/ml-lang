@@ -1,6 +1,7 @@
 module Expr = struct
   type t =
     | Int of { value : int; span : Source.Span.t }
+    | Bool of { value : bool; span : Source.Span.t }
     | Var of { name : string; span : Source.Span.t }
     | Let of { name : string; def : t; body : t; span : Source.Span.t }
   [@@deriving show]
@@ -8,6 +9,7 @@ module Expr = struct
   let rec to_ast e : Ast.Expr.t =
     match e with
     | Int { value; _ } -> Ast.Expr.Int { value }
+    | Bool { value; _ } -> Ast.Expr.Bool { value }
     | Var { name; _ } -> Ast.Expr.Var { name }
     | Let { name; def; body; _ } ->
         let def = to_ast def in

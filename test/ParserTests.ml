@@ -107,6 +107,25 @@ let ast_tests =
            bindings =
              [ Binding.Def { name = "hello"; expr = Expr.Int { value = 1 } } ];
          });
+    test_parser_ast "True literal" "module Hello = { def hello = True }"
+      (Module.Module
+         {
+           name = "Hello";
+           bindings =
+             [
+               Binding.Def { name = "hello"; expr = Expr.Bool { value = true } };
+             ];
+         });
+    test_parser_ast "True literal" "module Hello = { def hello = False }"
+      (Module.Module
+         {
+           name = "Hello";
+           bindings =
+             [
+               Binding.Def
+                 { name = "hello"; expr = Expr.Bool { value = false } };
+             ];
+         });
     test_parser_ast "two definitions"
       "module Hello = { def hello = 1 def bye = hello }"
       (Module.Module

@@ -1,6 +1,7 @@
 module Expr = struct
   type t =
     | Int of { value : int }
+    | Bool of { value : bool }
     | Var of { name : string }
     | Let of { name : string; def : t; body : t }
   [@@deriving show]

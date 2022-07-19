@@ -11,6 +11,7 @@ type t =
   (* Literals *)
   | Ident of string
   | Int of int
+  | Bool of bool
 [@@deriving show]
 
 let to_string = function
@@ -23,3 +24,5 @@ let to_string = function
   | RightBrace -> "}"
   | Ident s -> s
   | Int n -> string_of_int n
+  | Bool true -> "True"
+  | Bool false -> "False"

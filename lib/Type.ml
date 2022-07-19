@@ -1,1 +1,1 @@
-type t = Int [@@deriving show]
+type t = Int | Bool [@@deriving show]

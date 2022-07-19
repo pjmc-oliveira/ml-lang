@@ -4,7 +4,14 @@ let fail ?location lines : ('a, Error.t) result =
 module StrMap = Map.Make (String)
 
 let keywords =
-  [ ("module", Token.Module); ("def", Def); ("let", Let); ("in", In) ]
+  [
+    ("module", Token.Module);
+    ("def", Def);
+    ("let", Let);
+    ("in", In);
+    ("True", Bool true);
+    ("False", Bool false);
+  ]
   |> List.to_seq |> StrMap.of_seq
 
 let token src : (Token.t * Source.span * Source.t, Error.t) result =

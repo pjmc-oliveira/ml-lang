@@ -47,6 +47,10 @@ let suite =
   >::: [
          test_interpreter "one binding" "module Hello = { def main = 1 }"
            (Value.Int 1);
+         test_interpreter "boolean literal True"
+           "module Hello = { def main = True }" (Value.Bool true);
+         test_interpreter "boolean literal False"
+           "module Hello = { def main = False }" (Value.Bool false);
          test_interpreter "two bindings"
            "module Hello = { def hello = 1 def main = hello }" (Value.Int 1);
          test_interpreter "top-level define before use"
