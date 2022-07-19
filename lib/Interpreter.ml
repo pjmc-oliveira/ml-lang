@@ -79,8 +79,7 @@ let binding (b : Tast.binding) : Value.t t =
 let defer_binding (b : Tast.binding) : Value.t t =
   match b with
   | Def { name; expr; _ } ->
-      let* ctx = S.get in
-      let thunk = Value.Thunk { ctx; expr } in
+      let* thunk = defer expr in
       let* _ = define name thunk in
       S.pure thunk
 
@@ -94,6 +93,8 @@ let find_entrypoint entrypoint bindings : Tast.binding option =
 let module_ entrypoint (m : Tast.module_) : Value.t t =
   match m with
   | Module { bindings; span; _ } ->
+      (* TODO: There has to be a better way to do this *)
+      let* _ = traverse_list defer_binding bindings in
       let* _ = traverse_list defer_binding bindings in
       let* b =
         match find_entrypoint entrypoint bindings with

@@ -69,6 +69,19 @@ let suite =
               def main = identity 1
             }"
            (Int 1);
+         test_interpreter "nested function application"
+           "module Hello = {
+              def identity = \\x : Int. x
+              def main = identity (identity 1)
+            }"
+           (Int 1);
+         test_interpreter "different nested function application"
+           "module Hello = {
+              def id1 = \\x : Int. x
+              def id2 = \\y : Int. y
+              def main = id1 (id2 1)
+            }"
+           (Int 1);
          (* Failure *)
          test_failure "local scope"
            "module Hello = { def foo = let x = 1 in x def main = x }"

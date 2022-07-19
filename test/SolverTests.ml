@@ -95,6 +95,16 @@ let suite =
                 ("identity", Type.Arrow { from = Type.Int; to_ = Type.Int });
                 ("hello", Type.Int);
               ]);
+         test_solver "nested function application"
+           "module Hello = {
+              def identity = \\x : Int. x
+              def hello = identity (identity 1)
+            }"
+           (TyCtx.of_list
+              [
+                ("identity", Type.Arrow { from = Type.Int; to_ = Type.Int });
+                ("hello", Type.Int);
+              ]);
          (* Failures *)
          test_failure "let expression out-of-scope"
            "module Hello = { def foo = let x = 1 in x def main = x }"
