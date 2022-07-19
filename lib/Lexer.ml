@@ -28,6 +28,19 @@ let token src : (Token.t * Source.span * Source.t, Error.t) result =
       | '}' -> Ok (RightBrace, span, src')
       | '(' -> Ok (LeftParen, span, src')
       | ')' -> Ok (RightParen, span, src')
+      | ':' -> Ok (Colon, span, src')
+      | '\\' -> Ok (BackSlash, span, src')
+      | '.' -> Ok (Dot, span, src')
+      (* TODO: Clean this up *)
+      | '-' -> (
+          match Source.next src' with
+          | Some ('>', src'') ->
+              let span = Source.between src src'' in
+              Ok (Arrow, span, src'')
+          | _ ->
+              let str = String.make 1 c in
+              let location = Source.between src src' in
+              fail [ Text "Unexpected character: "; Code (str, location) ])
       | _ when Char.is_alpha c -> (
           let name, src'' = Source.take_while Char.is_alphanum src in
           let span = Source.between src src'' in

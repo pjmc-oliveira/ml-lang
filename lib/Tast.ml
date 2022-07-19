@@ -5,13 +5,20 @@ module Expr = struct
     | Var of { name : string; span : Source.Span.t; type_ : Type.t }
     | Let of {
         name : string;
-        ann : Type.t;
         def : t;
+        def_t : Type.t;
         body : t;
         span : Source.Span.t;
         type_ : Type.t;
       }
     | If of { cond : t; con : t; alt : t; span : Source.Span.t; type_ : Type.t }
+    | Lam of {
+        param : string;
+        param_t : Type.t;
+        body : t;
+        span : Source.Span.t;
+        type_ : Type.t;
+      }
   [@@deriving show]
 end
 

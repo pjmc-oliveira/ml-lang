@@ -164,11 +164,16 @@ let toplevel =
   let* () = drop_until (fun t -> t = Def) in
   pure ()
 
+let type_ () : Cst.type_ t =
+  (* TODO: Arrow types *)
+  let* name, span = span identifier in
+  pure (Cst.Type.Const { name; span })
+
 let rec expression () =
   let expr =
     one_of
       (error [ Text "Expected expression" ])
-      [ let_in (); it_then_else (); atom () ]
+      [ let_in (); it_then_else (); lambda (); atom () ]
   in
   let* expr, sp = span expr in
   pure (expr sp)
@@ -190,6 +195,15 @@ and it_then_else () =
   let* _ = expect Else in
   let* alt = expression () in
   pure (fun span -> Cst.Expr.If { cond; con; alt; span })
+
+and lambda () =
+  let* _ = accept BackSlash in
+  let* param = identifier in
+  let* _ = expect Colon in
+  let* param_t = type_ () in
+  let* _ = expect Dot in
+  let* body = expression () in
+  pure (fun span -> Cst.Expr.Lam { param; param_t = Some param_t; body; span })
 
 and atom () =
   let* tk = token in

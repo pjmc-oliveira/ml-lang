@@ -48,11 +48,15 @@ let rec eval (e : Tast.expr) : Value.t t =
       | Bool true -> eval con
       | Bool false -> eval alt
       | _ -> failwith ("Impossible if-cond not bool: " ^ Value.show cond))
+  | Lam { param; body; _ } ->
+      let* ctx = S.get in
+      S.pure (Value.Closure { ctx; param; body })
 
 and force (v : Value.t) : Value.t t =
   match v with
   | Int n -> S.pure (Value.Int n)
   | Bool b -> S.pure (Value.Bool b)
+  | Closure f -> S.pure (Value.Closure f)
   | Thunk { ctx; expr } -> S.scope ctx (eval expr)
 
 let binding (b : Tast.binding) : Value.t t =

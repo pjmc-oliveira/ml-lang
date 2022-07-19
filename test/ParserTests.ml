@@ -193,6 +193,26 @@ let ast_tests =
                  };
              ];
          });
+    test_parser_ast "lambda expression"
+      "module Hello = { def hello = \\x : Int. x }"
+      (Module
+         {
+           name = "Hello";
+           bindings =
+             [
+               Def
+                 {
+                   name = "hello";
+                   expr =
+                     Lam
+                       {
+                         param = "x";
+                         param_t = Some (Const { name = "Int" });
+                         body = Var { name = "x" };
+                       };
+                 };
+             ];
+         });
   ]
 
 let suite = "Parser" >::: cst_tests @ ast_tests

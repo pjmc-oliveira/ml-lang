@@ -59,6 +59,7 @@ let test_failure label str ?(initial_ctx = TyCtx.empty) expected_lines =
 let suite =
   "Solver"
   >::: [
+         (* Successes *)
          test_solver "empty module" "module Hello = {}" TyCtx.empty;
          test_solver "one binding" "module Hello = { def hello = 1 }"
            (TyCtx.of_list [ ("hello", Type.Int) ]);
@@ -80,6 +81,11 @@ let suite =
          test_solver "if expression False"
            "module Hello = { def hello = if False then False else True }"
            (TyCtx.of_list [ ("hello", Type.Bool) ]);
+         test_solver "lambda expression"
+           "module Hello = { def hello = \\x : Int. True }"
+           (TyCtx.of_list
+              [ ("hello", Type.Arrow { from = Type.Int; to_ = Type.Bool }) ]);
+         (* Failures *)
          test_failure "let expression out-of-scope"
            "module Hello = { def foo = let x = 1 in x def main = x }"
            [ [ Text "Unbound variable: x" ] ];

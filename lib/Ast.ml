@@ -1,3 +1,8 @@
+module Type = struct
+  type t = Const of { name : string } | Arrow of { from : t; to_ : t }
+  [@@deriving show]
+end
+
 module Expr = struct
   type t =
     | Int of { value : int }
@@ -5,6 +10,7 @@ module Expr = struct
     | Var of { name : string }
     | Let of { name : string; def : t; body : t }
     | If of { cond : t; con : t; alt : t }
+    | Lam of { param : string; param_t : Type.t option; body : t }
   [@@deriving show]
 end
 
@@ -17,6 +23,7 @@ module Module = struct
   [@@deriving show]
 end
 
+type type_ = Type.t
 type expr = Expr.t
 type binding = Binding.t
 type module_ = Module.t

@@ -1,3 +1,18 @@
+module Type = struct
+  type t =
+    | Const of { name : string; span : Source.Span.t }
+    | Arrow of { from : t; to_ : t; span : Source.Span.t }
+  [@@deriving show]
+
+  let rec to_ast e : Ast.Type.t =
+    match e with
+    | Const { name; _ } -> Const { name }
+    | Arrow { from; to_; _ } ->
+        let from = to_ast from in
+        let to_ = to_ast to_ in
+        Arrow { from; to_ }
+end
+
 module Expr = struct
   type t =
     | Int of { value : int; span : Source.Span.t }
@@ -5,6 +20,12 @@ module Expr = struct
     | Var of { name : string; span : Source.Span.t }
     | Let of { name : string; def : t; body : t; span : Source.Span.t }
     | If of { cond : t; con : t; alt : t; span : Source.Span.t }
+    | Lam of {
+        param : string;
+        param_t : Type.t option;
+        body : t;
+        span : Source.Span.t;
+      }
   [@@deriving show]
 
   let rec to_ast e : Ast.Expr.t =
@@ -21,6 +42,10 @@ module Expr = struct
         let con = to_ast con in
         let alt = to_ast alt in
         If { cond; con; alt }
+    | Lam { param; param_t; body; _ } ->
+        let param_t = Option.map Type.to_ast param_t in
+        let body = to_ast body in
+        Lam { param; param_t; body }
 
   let map_span f = function
     | Int { value; span } -> Int { value; span = f span }
@@ -28,6 +53,8 @@ module Expr = struct
     | Var { name; span } -> Var { name; span = f span }
     | Let { name; def; body; span } -> Let { name; def; body; span = f span }
     | If { cond; con; alt; span } -> If { cond; con; alt; span = f span }
+    | Lam { param; param_t; body; span } ->
+        Lam { param; param_t; body; span = f span }
 end
 
 module Binding = struct
@@ -57,6 +84,7 @@ module Module = struct
         Module { name; bindings }
 end
 
+type type_ = Type.t
 type expr = Expr.t
 type binding = Binding.t
 type module_ = Module.t

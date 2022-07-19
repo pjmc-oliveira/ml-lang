@@ -23,6 +23,19 @@ let if_condition_not_bool cond_t span : Error.t =
       Text ("But got type: " ^ Type.show cond_t);
     ]
 
+let rec solve_type (ty : Cst.Type.t) : (Type.t, Error.t) result =
+  let open Result.Syntax in
+  match ty with
+  | Const { name; _ } -> (
+      match name with
+      | "Int" -> Ok Int
+      | "Bool" -> Ok Bool
+      | _ -> Error (error [ Text ("Unbound type: " ^ name) ]))
+  | Arrow { from; to_; _ } ->
+      let* from = solve_type from in
+      let* to_ = solve_type to_ in
+      Ok (Type.Arrow { from; to_ })
+
 let rec expression (e : Cst.expr) (ctx : ty_ctx) :
     (Tast.expr * Type.t, Error.t) result =
   let open Result.Syntax in
@@ -38,10 +51,10 @@ let rec expression (e : Cst.expr) (ctx : ty_ctx) :
       | Some type_ -> Ok (Tast.Expr.Var { name; span; type_ }, type_)
       | None -> Error (unbound_var name span))
   | Let { name; def; body; span } ->
-      let* def, ann = expression def ctx in
-      let ctx' = TyCtx.insert name ann ctx in
+      let* def, def_t = expression def ctx in
+      let ctx' = TyCtx.insert name def_t ctx in
       let* body, type_ = expression body ctx' in
-      Ok (Tast.Expr.Let { name; ann; def; body; span; type_ }, type_)
+      Ok (Tast.Expr.Let { name; def_t; def; body; span; type_ }, type_)
   | If { cond; con; alt; span } -> (
       let* cond, cond_t = expression cond ctx in
       match cond_t with
@@ -53,6 +66,16 @@ let rec expression (e : Cst.expr) (ctx : ty_ctx) :
           else
             Error (if_branch_mismatch con_t alt_t span)
       | _ -> Error (if_condition_not_bool cond_t span))
+  | Lam { param; param_t; body; span } -> (
+      match param_t with
+      | None -> failwith "TODO"
+      | Some param_t ->
+          let* param_t = solve_type param_t in
+          let ctx' = TyCtx.insert param param_t ctx in
+          let* body, type_ = expression body ctx' in
+          Ok
+            ( Tast.Expr.Lam { param; param_t; body; span; type_ },
+              Type.Arrow { from = param_t; to_ = type_ } ))
 
 let binding (ctx : ty_ctx) (b : Cst.binding) :
     (Tast.binding * Type.t, Error.t) result =
