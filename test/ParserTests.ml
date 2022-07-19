@@ -29,26 +29,25 @@ let test_parser_ast label str ast =
     ~printer:string_of_ast_result
 
 let cst_tests =
-  let open Cst in
   [
     test_parser_cst "empty module" "module Hello = {}"
-      (Module.Module
+      (Module
          {
            name = "Hello";
            bindings = [];
            span = { index = 0; line = 1; column = 1; length = 17 };
          });
     test_parser_cst "one definition" "module Hello = { def hello = 1 }"
-      (Module.Module
+      (Module
          {
            name = "Hello";
            bindings =
              [
-               Binding.Def
+               Def
                  {
                    name = "hello";
                    expr =
-                     Expr.Int
+                     Int
                        {
                          value = 1;
                          span =
@@ -61,16 +60,16 @@ let cst_tests =
          });
     test_parser_cst "two definitions"
       "module Hello = { def hello = 1 def bye = 2 }"
-      (Module.Module
+      (Module
          {
            name = "Hello";
            bindings =
              [
-               Binding.Def
+               Def
                  {
                    name = "hello";
                    expr =
-                     Expr.Int
+                     Int
                        {
                          value = 1;
                          span =
@@ -78,11 +77,11 @@ let cst_tests =
                        };
                    span = { index = 17; line = 1; column = 18; length = 13 };
                  };
-               Binding.Def
+               Def
                  {
                    name = "bye";
                    expr =
-                     Expr.Int
+                     Int
                        {
                          value = 2;
                          span =
@@ -96,83 +95,74 @@ let cst_tests =
   ]
 
 let ast_tests =
-  let open Ast in
   [
     test_parser_ast "empty module" "module Hello = {}"
-      (Module.Module { name = "Hello"; bindings = [] });
+      (Module { name = "Hello"; bindings = [] });
     test_parser_ast "one definition" "module Hello = { def hello = 1 }"
-      (Module.Module
+      (Module
          {
            name = "Hello";
-           bindings =
-             [ Binding.Def { name = "hello"; expr = Expr.Int { value = 1 } } ];
+           bindings = [ Def { name = "hello"; expr = Int { value = 1 } } ];
          });
     test_parser_ast "True literal" "module Hello = { def hello = True }"
-      (Module.Module
+      (Module
          {
            name = "Hello";
-           bindings =
-             [
-               Binding.Def { name = "hello"; expr = Expr.Bool { value = true } };
-             ];
+           bindings = [ Def { name = "hello"; expr = Bool { value = true } } ];
          });
     test_parser_ast "True literal" "module Hello = { def hello = False }"
-      (Module.Module
+      (Module
          {
            name = "Hello";
-           bindings =
-             [
-               Binding.Def
-                 { name = "hello"; expr = Expr.Bool { value = false } };
-             ];
+           bindings = [ Def { name = "hello"; expr = Bool { value = false } } ];
          });
     test_parser_ast "two definitions"
       "module Hello = { def hello = 1 def bye = hello }"
-      (Module.Module
+      (Module
          {
            name = "Hello";
            bindings =
              [
-               Binding.Def { name = "hello"; expr = Expr.Int { value = 1 } };
-               Binding.Def { name = "bye"; expr = Expr.Var { name = "hello" } };
+               Def { name = "hello"; expr = Int { value = 1 } };
+               Def { name = "bye"; expr = Var { name = "hello" } };
              ];
          });
     test_parser_ast "let expression"
       "module Hello = { def hello = let x = 1 in x }"
-      (Module.Module
+      (Module
          {
            name = "Hello";
            bindings =
              [
-               Binding.Def
+               Def
                  {
                    name = "hello";
                    expr =
-                     Expr.Let
+                     Let
                        {
                          name = "x";
-                         def = Expr.Int { value = 1 };
-                         body = Expr.Var { name = "x" };
+                         def = Int { value = 1 };
+                         body = Var { name = "x" };
                        };
                  };
              ];
          });
     test_parser_ast "if expression"
       "module Hello = { def hello = if True then 1 else x }"
-      (Module.Module
+      (Module
          {
            name = "Hello";
            bindings =
              [
-               Binding.Def
+               Def
                  {
                    name = "hello";
                    expr =
-                     Expr.If
+                     If
                        {
-                         cond = Expr.Bool { value = true };
-                         con = Expr.Int { value = 1 };
-                         alt = Expr.Var { name = "x" };
+                         cond = Bool { value = true };
+                         con = Int { value = 1 };
+                         alt = Var { name = "x" };
                        };
                  };
              ];

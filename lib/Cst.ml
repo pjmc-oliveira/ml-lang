@@ -9,18 +9,18 @@ module Expr = struct
 
   let rec to_ast e : Ast.Expr.t =
     match e with
-    | Int { value; _ } -> Ast.Expr.Int { value }
-    | Bool { value; _ } -> Ast.Expr.Bool { value }
-    | Var { name; _ } -> Ast.Expr.Var { name }
+    | Int { value; _ } -> Int { value }
+    | Bool { value; _ } -> Bool { value }
+    | Var { name; _ } -> Var { name }
     | Let { name; def; body; _ } ->
         let def = to_ast def in
         let body = to_ast body in
-        Ast.Expr.Let { name; def; body }
+        Let { name; def; body }
     | If { cond; con; alt; _ } ->
         let cond = to_ast cond in
         let con = to_ast con in
         let alt = to_ast alt in
-        Ast.Expr.If { cond; con; alt }
+        If { cond; con; alt }
 end
 
 module Binding = struct
@@ -31,7 +31,7 @@ module Binding = struct
     match b with
     | Def { name; expr; _ } ->
         let expr = Expr.to_ast expr in
-        Ast.Binding.Def { name; expr }
+        Def { name; expr }
 end
 
 module Module = struct
@@ -47,7 +47,7 @@ module Module = struct
     match m with
     | Module { name; bindings; _ } ->
         let bindings = List.map Binding.to_ast bindings in
-        Ast.Module.Module { name; bindings }
+        Module { name; bindings }
 end
 
 type expr = Expr.t

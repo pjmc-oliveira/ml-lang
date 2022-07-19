@@ -25,6 +25,7 @@ let if_condition_not_bool cond_t span : Error.t =
 
 let rec expression (e : Cst.expr) (ctx : ty_ctx) :
     (Tast.expr * Type.t, Error.t) result =
+  let open Result.Syntax in
   match e with
   | Int { value; span } ->
       let type_ = Type.Int in
@@ -37,13 +38,11 @@ let rec expression (e : Cst.expr) (ctx : ty_ctx) :
       | Some type_ -> Ok (Tast.Expr.Var { name; span; type_ }, type_)
       | None -> Error (unbound_var name span))
   | Let { name; def; body; span } ->
-      let open Result.Syntax in
       let* def, ann = expression def ctx in
       let ctx' = TyCtx.insert name ann ctx in
       let* body, type_ = expression body ctx' in
       Ok (Tast.Expr.Let { name; ann; def; body; span; type_ }, type_)
   | If { cond; con; alt; span } -> (
-      let open Result.Syntax in
       let* cond, cond_t = expression cond ctx in
       match cond_t with
       | Bool ->
@@ -57,9 +56,9 @@ let rec expression (e : Cst.expr) (ctx : ty_ctx) :
 
 let binding (ctx : ty_ctx) (b : Cst.binding) :
     (Tast.binding * Type.t, Error.t) result =
+  let open Result.Syntax in
   match b with
   | Def { name; expr; span } ->
-      let open Result.Syntax in
       let* expr, type_ = expression expr ctx in
       Ok (Tast.Binding.Def { name; expr; span; type_ }, type_)
 
@@ -89,9 +88,9 @@ let rec multiple_passes (previous : int) (bindings : Cst.binding list)
 
 let module_ (m : Cst.module_) (ctx : ty_ctx) :
     (Tast.module_, Error.t list) result =
+  let open Result.Syntax in
   match m with
   | Module { name; bindings; span } ->
-      let open Result.Syntax in
       let* bindings = multiple_passes (List.length bindings) bindings ctx in
       Ok (Tast.Module.Module { name; bindings; span })
 

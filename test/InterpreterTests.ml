@@ -46,22 +46,22 @@ let suite =
   "Interpreter"
   >::: [
          test_interpreter "one binding" "module Hello = { def main = 1 }"
-           (Value.Int 1);
+           (Int 1);
          test_interpreter "boolean literal True"
-           "module Hello = { def main = True }" (Value.Bool true);
+           "module Hello = { def main = True }" (Bool true);
          test_interpreter "boolean literal False"
-           "module Hello = { def main = False }" (Value.Bool false);
+           "module Hello = { def main = False }" (Bool false);
          test_interpreter "two bindings"
-           "module Hello = { def hello = 1 def main = hello }" (Value.Int 1);
+           "module Hello = { def hello = 1 def main = hello }" (Int 1);
          test_interpreter "top-level define before use"
-           "module Hello = { def main = bye def bye = 1 }" (Value.Int 1);
+           "module Hello = { def main = bye def bye = 1 }" (Int 1);
          test_interpreter "let expression"
-           "module Hello = { def main = let x = 2 in x }" (Value.Int 2);
+           "module Hello = { def main = let x = 2 in x }" (Int 2);
          test_interpreter "if expression True"
            "module Hello = { def main = if True then let x = 1 in x else 2 }"
-           (Value.Int 1);
+           (Int 1);
          test_interpreter "if expression False"
-           "module Hello = { def main = if False then 1 else 2 }" (Value.Int 2);
+           "module Hello = { def main = if False then 1 else 2 }" (Int 2);
          test_failure "local scope"
            "module Hello = { def foo = let x = 1 in x def main = x }"
            [ [ Text "Unbound variable: x" ] ];
