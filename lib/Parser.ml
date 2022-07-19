@@ -167,7 +167,7 @@ let toplevel =
 let atom =
   let* tk = token in
   match tk with
-  | Int value -> pure (fun span -> Cst.Expr.Const { value; span })
+  | Int value -> pure (fun span -> Cst.Expr.Int { value; span })
   | Ident name -> pure (fun span -> Cst.Expr.Var { name; span })
   | _ -> fail_lines [ Text "Expected atom" ]
 

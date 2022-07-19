@@ -48,7 +48,7 @@ let cst_tests =
                  {
                    name = "hello";
                    expr =
-                     Expr.Const
+                     Expr.Int
                        {
                          value = 1;
                          span =
@@ -70,7 +70,7 @@ let cst_tests =
                  {
                    name = "hello";
                    expr =
-                     Expr.Const
+                     Expr.Int
                        {
                          value = 1;
                          span =
@@ -82,7 +82,7 @@ let cst_tests =
                  {
                    name = "bye";
                    expr =
-                     Expr.Const
+                     Expr.Int
                        {
                          value = 2;
                          span =
@@ -105,7 +105,7 @@ let ast_tests =
          {
            name = "Hello";
            bindings =
-             [ Binding.Def { name = "hello"; expr = Expr.Const { value = 1 } } ];
+             [ Binding.Def { name = "hello"; expr = Expr.Int { value = 1 } } ];
          });
     test_parser_ast "two definitions"
       "module Hello = { def hello = 1 def bye = hello }"
@@ -114,7 +114,7 @@ let ast_tests =
            name = "Hello";
            bindings =
              [
-               Binding.Def { name = "hello"; expr = Expr.Const { value = 1 } };
+               Binding.Def { name = "hello"; expr = Expr.Int { value = 1 } };
                Binding.Def { name = "bye"; expr = Expr.Var { name = "hello" } };
              ];
          });
@@ -132,7 +132,7 @@ let ast_tests =
                      Expr.Let
                        {
                          name = "x";
-                         def = Expr.Const { value = 1 };
+                         def = Expr.Int { value = 1 };
                          body = Expr.Var { name = "x" };
                        };
                  };

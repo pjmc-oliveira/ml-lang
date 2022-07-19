@@ -31,7 +31,7 @@ let defer (expr : Tast.expr) : Value.t t =
 
 let rec eval (e : Tast.expr) : Value.t t =
   match e with
-  | Const { value; _ } -> S.pure (Value.Int value)
+  | Int { value; _ } -> S.pure (Value.Int value)
   | Var { name; span; _ } ->
       let* value = lookup span name in
       let* value = force value in

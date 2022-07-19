@@ -11,9 +11,9 @@ let unbound_var name span : Error.t =
 let rec expression (e : Cst.expr) (ctx : ty_ctx) :
     (Tast.expr * Type.t, Error.t) result =
   match e with
-  | Const { value; span } ->
+  | Int { value; span } ->
       let type_ = Type.Int in
-      Ok (Tast.Expr.Const { value; span; type_ }, type_)
+      Ok (Tast.Expr.Int { value; span; type_ }, type_)
   | Var { name; span } -> (
       match TyCtx.lookup name ctx with
       | Some type_ -> Ok (Tast.Expr.Var { name; span; type_ }, type_)
@@ -43,6 +43,7 @@ let rec multiple_passes (previous : int) (bindings : Cst.binding list)
         else
           let current = List.length errs in
           if current < previous then
+            (* TODO: should this skip the successful bindings on the next pass? *)
             multiple_passes current bindings ctx
           else
             let errors = List.map (fun (_, e) -> e) errs in

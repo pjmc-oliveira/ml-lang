@@ -1,6 +1,6 @@
 module Expr = struct
   type t =
-    | Const of { value : int; span : Source.Span.t; type_ : Type.t }
+    | Int of { value : int; span : Source.Span.t; type_ : Type.t }
     | Var of { name : string; span : Source.Span.t; type_ : Type.t }
     | Let of {
         name : string;
