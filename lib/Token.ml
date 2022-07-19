@@ -1,18 +1,25 @@
 type t =
+  (* Keywords *)
   | Module
-  | Ident of string
+  | Def
+  | Let
+  | In
+  (* Symbols *)
   | Equal
   | LeftBrace
   | RightBrace
-  | Def
+  (* Literals *)
+  | Ident of string
   | Int of int
 [@@deriving show]
 
 let to_string = function
   | Module -> "module"
-  | Ident s -> s
+  | Def -> "def"
+  | Let -> "let"
+  | In -> "in"
   | Equal -> "="
   | LeftBrace -> "{"
   | RightBrace -> "}"
-  | Def -> "def"
+  | Ident s -> s
   | Int n -> string_of_int n

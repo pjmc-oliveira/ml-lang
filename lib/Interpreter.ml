@@ -25,6 +25,10 @@ let lookup location name =
   | Some value -> S.pure value
   | None -> S.fail [ error ~location [ Text ("Unbound variable: " ^ name) ] ]
 
+let defer (expr : Tast.expr) : Value.t t =
+  let* ctx = S.get in
+  S.pure (Value.Thunk { ctx; expr })
+
 let rec eval (e : Tast.expr) : Value.t t =
   match e with
   | Const { value; _ } -> S.pure (Value.Int value)
@@ -32,6 +36,10 @@ let rec eval (e : Tast.expr) : Value.t t =
       let* value = lookup span name in
       let* value = force value in
       S.pure value
+  | Let { name; def; body; _ } ->
+      let* thunk = defer def in
+      let* _ = define name thunk in
+      eval body
 
 and force (v : Value.t) : Value.t t =
   match v with

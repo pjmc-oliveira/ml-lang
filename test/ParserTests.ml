@@ -107,7 +107,7 @@ let ast_tests =
            bindings =
              [ Binding.Def { name = "hello"; expr = Expr.Const { value = 1 } } ];
          });
-    test_parser_ast "one definition"
+    test_parser_ast "two definitions"
       "module Hello = { def hello = 1 def bye = hello }"
       (Module.Module
          {
@@ -116,6 +116,26 @@ let ast_tests =
              [
                Binding.Def { name = "hello"; expr = Expr.Const { value = 1 } };
                Binding.Def { name = "bye"; expr = Expr.Var { name = "hello" } };
+             ];
+         });
+    test_parser_ast "let expression"
+      "module Hello = { def hello = let x = 1 in x }"
+      (Module.Module
+         {
+           name = "Hello";
+           bindings =
+             [
+               Binding.Def
+                 {
+                   name = "hello";
+                   expr =
+                     Expr.Let
+                       {
+                         name = "x";
+                         def = Expr.Const { value = 1 };
+                         body = Expr.Var { name = "x" };
+                       };
+                 };
              ];
          });
   ]

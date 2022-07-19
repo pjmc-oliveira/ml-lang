@@ -47,4 +47,10 @@ let suite =
          test_solver "top-level define before use"
            "module Hello = { def hello = bye def bye = 1 }"
            (Solver.TyCtx.of_list [ ("hello", Type.Int); ("bye", Type.Int) ]);
+         test_solver "let expression"
+           "module Hello = { def hello = let x = 1 in x }"
+           (Solver.TyCtx.of_list [ ("hello", Type.Int) ]);
+         test_solver "let expression scope"
+           "module Hello = { def foo = let x = 1 in x def main = x }"
+           (Solver.TyCtx.of_list [ ("hello", Type.Int) ]);
        ]

@@ -1,5 +1,8 @@
 module Expr = struct
-  type t = Const of { value : int } | Var of { name : string }
+  type t =
+    | Const of { value : int }
+    | Var of { name : string }
+    | Let of { name : string; def : t; body : t }
   [@@deriving show]
 end
 

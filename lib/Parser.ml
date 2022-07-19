@@ -171,15 +171,27 @@ let atom =
   | Ident name -> pure (fun span -> Cst.Expr.Var { name; span })
   | _ -> fail_lines [ Text "Expected atom" ]
 
-let expression =
-  let* expr, sp = span atom in
+let rec expression () =
+  let expr =
+    one_of (error [ Text "Expected expression" ]) [ let_in (); atom ]
+  in
+  let* expr, sp = span expr in
   pure (expr sp)
+
+and let_in () =
+  let* _ = accept Let in
+  let* name = identifier in
+  let* _ = expect Equal in
+  let* def = expression () in
+  let* _ = expect In in
+  let* body = expression () in
+  pure (fun span -> Cst.Expr.Let { name; def; body; span })
 
 let def =
   let* () = accept Def in
   let* name = identifier in
   let* () = expect Equal in
-  let* expr = expression in
+  let* expr = expression () in
   pure (fun span -> Cst.Binding.Def { name; expr; span })
 
 let binding =

@@ -21,6 +21,12 @@ let set s : (unit, 's, 'e) t = fun _ -> Ok ((), s)
 let mut f : (unit, 's, 'e) t = fun s -> Ok ((), f s)
 let scope (s : 's) (p : ('a, 's, 'e) t) : ('a, 's, 'e) t = fun _ -> p s
 
+let local (p : ('a, 's, 'e) t) : ('a, 's, 'e) t =
+ fun s ->
+  match p s with
+  | Ok (x, _) -> Ok (x, s)
+  | Error e -> Error e
+
 module Syntax = struct
   let ( let* ) = bind
   let ( and* ) = prod

@@ -2,12 +2,17 @@ module Expr = struct
   type t =
     | Const of { value : int; span : Source.Span.t }
     | Var of { name : string; span : Source.Span.t }
+    | Let of { name : string; def : t; body : t; span : Source.Span.t }
   [@@deriving show]
 
-  let to_ast e : Ast.Expr.t =
+  let rec to_ast e : Ast.Expr.t =
     match e with
     | Const { value; _ } -> Ast.Expr.Const { value }
     | Var { name; _ } -> Ast.Expr.Var { name }
+    | Let { name; def; body; _ } ->
+        let def = to_ast def in
+        let body = to_ast body in
+        Ast.Expr.Let { name; def; body }
 end
 
 module Binding = struct

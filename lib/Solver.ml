@@ -25,8 +25,8 @@ let alt (l : 'a t) (r : 'a t) : 'a t =
       | Ok (y, ctx') -> Ok (y, ctx')
       | Error e2 -> Error (e1 @ e2))
 
-let result (s : 'a t) : ('a, Error.t list) result t =
-  alt (S.map (fun x -> Ok x) s) (S.pure (Error []))
+let result ?(errors = []) (s : 'a t) : ('a, Error.t list) result t =
+  alt (S.map (fun x -> Ok x) s) (S.pure (Error errors))
 
 let traverse_list (f : 'a -> 'b t) (ls : 'a list) : 'b list t =
   List.fold_right
@@ -36,14 +36,21 @@ let traverse_list (f : 'a -> 'b t) (ls : 'a list) : 'b list t =
       S.pure (y :: ys))
     ls (S.pure [])
 
-let unbound_var name span : Error.t =
-  {
-    kind = Error.Kind.Solver;
-    location = Some span;
-    lines = [ Text ("Unbound variable: " ^ name) ];
-  }
+let error ?span lines : Error.t =
+  { kind = Error.Kind.Solver; location = span; lines }
 
-let expression (e : Cst.expr) : (Tast.expr * Type.t) t =
+let unbound_var name span : Error.t =
+  error ~span [ Text ("Unbound variable: " ^ name) ]
+
+let define name ty = S.mut (TyCtx.insert name ty)
+
+(* let lookup location name =
+   let* ctx = S.get in
+   match TyCtx.lookup name ctx with
+   | Some value -> S.pure value
+   | None -> S.fail [ error ~location [ Text ("Unbound variable: " ^ name) ] ] *)
+
+let rec expression (e : Cst.expr) : (Tast.expr * Type.t) t =
   match e with
   | Const { value; span } ->
       let type_ = Type.Int in
@@ -53,6 +60,12 @@ let expression (e : Cst.expr) : (Tast.expr * Type.t) t =
       match TyCtx.lookup name ctx with
       | None -> S.fail [ unbound_var name span ]
       | Some type_ -> S.pure (Tast.Expr.Var { name; span; type_ }, type_))
+  | Let { name; def; body; span } ->
+      let* def, ann = expression def in
+      S.local
+        (let* _ = define name ann in
+         let* body, type_ = expression body in
+         S.pure (Tast.Expr.Let { name; ann; def; body; span; type_ }, type_))
 
 let binding (b : Cst.binding) : Tast.binding t =
   match b with
@@ -64,7 +77,14 @@ let binding (b : Cst.binding) : Tast.binding t =
 let rec multiple_passes (remaining : int) (bs : Cst.binding list) :
     Tast.binding list t =
  fun ctx ->
-  match traverse_list (fun b -> result (binding b)) bs ctx with
+  match
+    traverse_list
+      (fun (Cst.Binding.Def b) ->
+        result
+          ~errors:[ error [ Text ("problem with " ^ b.name) ] ]
+          (binding (Def b)))
+      bs ctx
+  with
   | Ok (bs', ctx') ->
       let current = List.length (List.filter Result.is_error bs') in
       if current = 0 then

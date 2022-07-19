@@ -24,6 +24,12 @@ let test_interpreter label str ?(entrypoint = "main") ?(tm_ctx = TmCtx.empty)
   assert_equal ~printer:string_of_result (Ok expected)
     (interpret_module ~entrypoint ~tm_ctx ~ty_ctx str)
 
+let test_failure label str ?(entrypoint = "main") ?(tm_ctx = TmCtx.empty)
+    ?(ty_ctx = TmCtx.empty) expected =
+  label >:: fun _ ->
+  assert_equal ~printer:string_of_result (Error expected)
+    (interpret_module ~entrypoint ~tm_ctx ~ty_ctx str)
+
 let suite =
   "Interpreter"
   >::: [
@@ -33,4 +39,9 @@ let suite =
            "module Hello = { def hello = 1 def main = hello }" (Value.Int 1);
          test_interpreter "top-level define before use"
            "module Hello = { def main = bye def bye = 1 }" (Value.Int 1);
+         test_interpreter "let expression"
+           "module Hello = { def main = let x = 2 in x }" (Value.Int 2);
+         test_interpreter "local scope"
+           "module Hello = { def foo = let x = 1 in x def main = x }"
+           (Value.Int 1);
        ]
