@@ -51,6 +51,16 @@ let rec eval (e : Tast.expr) : Value.t t =
   | Lam { param; body; _ } ->
       let* ctx = S.get in
       S.pure (Value.Closure { ctx; param; body })
+  | App { func; arg; _ } -> (
+      let* func = eval func in
+      match func with
+      | Closure { ctx; param; body } ->
+          let* arg = defer arg in
+          let ctx' = TmCtx.insert param arg ctx in
+          S.scope ctx' (eval body)
+      | _ ->
+          failwith ("Imposible cannot apply to non-function: " ^ Value.show func)
+      )
 
 and force (v : Value.t) : Value.t t =
   match v with

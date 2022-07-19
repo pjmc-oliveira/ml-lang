@@ -213,6 +213,59 @@ let ast_tests =
                  };
              ];
          });
+    test_parser_ast "function application"
+      "module Hello = { def hello = f x y z }"
+      (Module
+         {
+           name = "Hello";
+           bindings =
+             [
+               Def
+                 {
+                   name = "hello";
+                   expr =
+                     App
+                       {
+                         func =
+                           App
+                             {
+                               func =
+                                 App
+                                   {
+                                     func = Var { name = "f" };
+                                     arg = Var { name = "x" };
+                                   };
+                               arg = Var { name = "y" };
+                             };
+                         arg = Var { name = "z" };
+                       };
+                 };
+             ];
+         });
+    test_parser_ast "function application"
+      "module Hello = { def hello = f (g x) }"
+      (Module
+         {
+           name = "Hello";
+           bindings =
+             [
+               Def
+                 {
+                   name = "hello";
+                   expr =
+                     App
+                       {
+                         func = Var { name = "f" };
+                         arg =
+                           App
+                             {
+                               func = Var { name = "g" };
+                               arg = Var { name = "x" };
+                             };
+                       };
+                 };
+             ];
+         });
   ]
 
 let suite = "Parser" >::: cst_tests @ ast_tests

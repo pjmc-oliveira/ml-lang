@@ -85,6 +85,16 @@ let suite =
            "module Hello = { def hello = \\x : Int. True }"
            (TyCtx.of_list
               [ ("hello", Type.Arrow { from = Type.Int; to_ = Type.Bool }) ]);
+         test_solver "function application"
+           "module Hello = {
+              def identity = \\x : Int. x
+              def hello = identity 1
+            }"
+           (TyCtx.of_list
+              [
+                ("identity", Type.Arrow { from = Type.Int; to_ = Type.Int });
+                ("hello", Type.Int);
+              ]);
          (* Failures *)
          test_failure "let expression out-of-scope"
            "module Hello = { def foo = let x = 1 in x def main = x }"
@@ -104,6 +114,21 @@ let suite =
                Text "If branches must have the same type";
                Text ("then-branch has type: " ^ Type.show Int);
                Text ("but else-branch has type: " ^ Type.show Bool);
+             ];
+           ];
+         test_failure "cannot apply to non-function"
+           "module Hello = { def main = 1 1 }"
+           [ [ Text "Cannot a apply to non-function values" ] ];
+         test_failure "wrong argument type"
+           "module Hello = {
+              def identity = \\x : Int. x
+              def main = identity True
+            }"
+           [
+             [
+               Text "Wrong argument type";
+               Text ("Expected: " ^ Type.show Int);
+               Text ("But got: " ^ Type.show Bool);
              ];
            ];
        ]

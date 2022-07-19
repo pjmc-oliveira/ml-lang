@@ -45,6 +45,7 @@ let test_failure label str ?(entrypoint = "main") ?(tm_ctx = TmCtx.empty)
 let suite =
   "Interpreter"
   >::: [
+         (* Successes *)
          test_interpreter "one binding" "module Hello = { def main = 1 }"
            (Int 1);
          test_interpreter "boolean literal True"
@@ -62,6 +63,13 @@ let suite =
            (Int 1);
          test_interpreter "if expression False"
            "module Hello = { def main = if False then 1 else 2 }" (Int 2);
+         test_interpreter "function application"
+           "module Hello = {
+              def identity = \\x : Int. x
+              def main = identity 1
+            }"
+           (Int 1);
+         (* Failure *)
          test_failure "local scope"
            "module Hello = { def foo = let x = 1 in x def main = x }"
            [ [ Text "Unbound variable: x" ] ];

@@ -21,21 +21,15 @@ let string_of_errors errs =
   lines
 
 let lex str =
-  print_string "lex\n";
   let src = Source.of_string str in
   Result.map_error string_of_errors (Lexer.tokens src)
 
-let parse tks =
-  print_string "parse\n";
-  Result.map_error string_of_errors Parser.(parse module_ tks)
+let parse tks = Result.map_error string_of_errors Parser.(parse module_ tks)
 
 let solve cst =
-  print_string "solve\n";
   Result.map_error string_of_errors Solver.(module_ cst TyCtx.empty)
 
-let interpret tast =
-  print_string "interpret\n";
-  Result.map_error string_of_errors (Interpreter.run tast)
+let interpret tast = Result.map_error string_of_errors (Interpreter.run tast)
 
 let run str =
   let* tks = lex str in

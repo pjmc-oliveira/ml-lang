@@ -8,6 +8,17 @@ let error ?span lines : Error.t =
 let unbound_var name span : Error.t =
   error ~span [ Text ("Unbound variable: " ^ name) ]
 
+let wrong_arg_type expected_t actual_t span : Error.t =
+  error ~span
+    [
+      Text "Wrong argument type";
+      Text ("Expected: " ^ Type.show expected_t);
+      Text ("But got: " ^ Type.show actual_t);
+    ]
+
+let expr_not_a_function _expr span : Error.t =
+  error ~span [ Text "Cannot a apply to non-function values" ]
+
 let if_branch_mismatch con_t alt_t span : Error.t =
   error ~span
     [
@@ -76,6 +87,16 @@ let rec expression (e : Cst.expr) (ctx : ty_ctx) :
           Ok
             ( Tast.Expr.Lam { param; param_t; body; span; type_ },
               Type.Arrow { from = param_t; to_ = type_ } ))
+  | App { func; arg; span } -> (
+      let* func, func_t = expression func ctx in
+      match func_t with
+      | Arrow { from = param_t; to_ = type_ } ->
+          let* arg, arg_t = expression arg ctx in
+          if param_t = arg_t then
+            Ok (Tast.Expr.App { func; arg; span; type_ }, type_)
+          else
+            Error (wrong_arg_type param_t arg_t span)
+      | _ -> Error (expr_not_a_function func span))
 
 let binding (ctx : ty_ctx) (b : Cst.binding) :
     (Tast.binding * Type.t, Error.t) result =

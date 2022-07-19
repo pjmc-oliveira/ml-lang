@@ -59,6 +59,9 @@ module Combinator = struct
   let one_of err (ps : 'a t list) : 'a t =
     List.fold_right alt ps (fun _ -> (Unconsumed, Error [ err ]))
 
+  let optional (p : 'a t) : 'a option t =
+    alt (map (fun x -> Some x) p) (pure None)
+
   module Syntax = struct
     let ( let+ ) = map
     let ( and+ ) = prod
@@ -68,12 +71,18 @@ module Combinator = struct
 
   open Syntax
 
+  let try_ p : 'a t =
+   fun s ->
+    match p s with
+    | c, Ok (x, s') -> (c, Ok (x, s'))
+    | _, Error e -> (Unconsumed, Error e)
+
   let rec some p =
     let* x = p in
     let* xs = many p in
     pure (x :: xs)
 
-  and many p = alt (some p) (pure [])
+  and many p = alt (try_ (some p)) (pure [])
 
   let accumulate (p : 'a t) ~(recover : unit t) : 'a list t =
     let rec loop c oks errs s =
@@ -108,21 +117,19 @@ module Combinator = struct
     | _, None -> (Unconsumed, Error [ error [ Text "Unexpected EOF" ] ])
     | _, Some loc -> (Unconsumed, Ok (loc, tks))
 
-  let span (p : 'a t) : ('a * Source.span) t =
+  let span_of (p : 'a t) : ('a * Source.span) t =
     let* p1 = next_position in
     let* res = p in
     let* p2 = last_position in
     pure (res, Source.Span.between p1 p2)
 
+  let with_span (p : (Source.span -> 'a) t) : 'a t =
+    let* f, sp = span_of p in
+    pure (f sp)
+
   let eof : unit t = function
     | [], loc -> (Unconsumed, Ok ((), ([], loc)))
     | _ -> (Unconsumed, Error [ error [ Text "Expected EOF" ] ])
-
-  let try_ p : 'a t =
-   fun s ->
-    match p s with
-    | c, Ok (x, s') -> (c, Ok (x, s'))
-    | _, Error e -> (Unconsumed, Error e)
 
   let rec drop_until predicate : unit t =
     let* t = token in
@@ -166,56 +173,71 @@ let toplevel =
 
 let type_ () : Cst.type_ t =
   (* TODO: Arrow types *)
-  let* name, span = span identifier in
+  let* name, span = span_of identifier in
   pure (Cst.Type.Const { name; span })
 
-let rec expression () =
-  let expr =
-    one_of
-      (error [ Text "Expected expression" ])
-      [ let_in (); it_then_else (); lambda (); atom () ]
-  in
-  let* expr, sp = span expr in
-  pure (expr sp)
+let rec expression () : Cst.expr t =
+  one_of
+    (error [ Text "Expected expression" ])
+    [ let_in (); it_then_else (); lambda (); application () ]
 
 and let_in () =
-  let* _ = accept Let in
-  let* name = identifier in
-  let* _ = expect Equal in
-  let* def = expression () in
-  let* _ = expect In in
-  let* body = expression () in
-  pure (fun span -> Cst.Expr.Let { name; def; body; span })
+  with_span
+    (let* _ = accept Let in
+     let* name = identifier in
+     let* _ = expect Equal in
+     let* def = expression () in
+     let* _ = expect In in
+     let* body = expression () in
+     pure (fun span -> Cst.Expr.Let { name; def; body; span }))
 
 and it_then_else () =
-  let* _ = accept If in
-  let* cond = expression () in
-  let* _ = expect Then in
-  let* con = expression () in
-  let* _ = expect Else in
-  let* alt = expression () in
-  pure (fun span -> Cst.Expr.If { cond; con; alt; span })
+  with_span
+    (let* _ = accept If in
+     let* cond = expression () in
+     let* _ = expect Then in
+     let* con = expression () in
+     let* _ = expect Else in
+     let* alt = expression () in
+     pure (fun span -> Cst.Expr.If { cond; con; alt; span }))
 
 and lambda () =
-  let* _ = accept BackSlash in
-  let* param = identifier in
-  let* _ = expect Colon in
-  let* param_t = type_ () in
-  let* _ = expect Dot in
-  let* body = expression () in
-  pure (fun span -> Cst.Expr.Lam { param; param_t = Some param_t; body; span })
+  with_span
+    (let* _ = accept BackSlash in
+     let* param = identifier in
+     let* _ = expect Colon in
+     let* param_t = type_ () in
+     let* _ = expect Dot in
+     let* body = expression () in
+     pure (fun span ->
+         Cst.Expr.Lam { param; param_t = Some param_t; body; span }))
+
+and application () =
+  with_span
+    (let* func = atom () in
+     let* args = many (atom ()) in
+     let expr =
+       List.fold_left
+         (fun func arg span ->
+           let func = func span in
+           Cst.Expr.App { func; arg; span })
+         (fun _ -> func)
+         args
+     in
+     pure expr)
 
 and atom () =
-  let* tk = token in
-  match tk with
-  | Int value -> pure (fun span -> Cst.Expr.Int { value; span })
-  | Bool value -> pure (fun span -> Cst.Expr.Bool { value; span })
-  | Ident name -> pure (fun span -> Cst.Expr.Var { name; span })
-  | LeftParen ->
-      let* expr = expression () in
-      let* _ = expect RightParen in
-      pure (fun span -> Cst.Expr.map_span (fun _ -> span) expr)
-  | _ -> fail_lines [ Text "Expected atom" ]
+  with_span
+    (let* tk = token in
+     match tk with
+     | Int value -> pure (fun span -> Cst.Expr.Int { value; span })
+     | Bool value -> pure (fun span -> Cst.Expr.Bool { value; span })
+     | Ident name -> pure (fun span -> Cst.Expr.Var { name; span })
+     | LeftParen ->
+         let* expr = expression () in
+         let* _ = expect RightParen in
+         pure (fun span -> Cst.Expr.map_span (fun _ -> span) expr)
+     | _ -> fail_lines [ Text "Expected atom" ])
 
 let def =
   let* () = accept Def in
@@ -225,7 +247,7 @@ let def =
   pure (fun span -> Cst.Binding.Def { name; expr; span })
 
 let binding =
-  let* b, sp = span (one_of (error [ Text "Expected binding" ]) [ def ]) in
+  let* b, sp = span_of (one_of (error [ Text "Expected binding" ]) [ def ]) in
   pure (b sp)
 
 let module_ =
@@ -235,12 +257,11 @@ let module_ =
     let* () = expect Equal in
     let* () = expect LeftBrace in
     let* bindings = accumulate binding ~recover:toplevel in
-    (* let* bindings = many binding in *)
     let* () = expect RightBrace in
     let* () = eof in
     pure (fun span -> Cst.Module.Module { name; bindings; span })
   in
-  let* m, sp = span parse_module in
+  let* m, sp = span_of parse_module in
   pure (m sp)
 
 let parse = Combinator.parse
