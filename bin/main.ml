@@ -15,20 +15,38 @@ let read_lines path : string =
   let lines = loop [] in
   String.concat "\n" lines
 
-let run str =
+let string_of_errors errs =
+  let lines = List.map Error.to_string errs in
+  let lines = String.concat "\n\n" lines in
+  lines
+
+let lex str =
+  print_string "lex\n";
   let src = Source.of_string str in
-  let* tks = Lexer.tokens src in
-  let* m = Parser.(parse module_ tks) in
-  let* m = Solver.(solve (module_ m) TyCtx.empty) in
-  let* value = Interpreter.run m in
+  Result.map_error string_of_errors (Lexer.tokens src)
+
+let parse tks =
+  print_string "parse\n";
+  Result.map_error string_of_errors Parser.(parse module_ tks)
+
+let solve cst =
+  print_string "solve\n";
+  Result.map_error string_of_errors Solver.(solve (module_ cst) TyCtx.empty)
+
+let interpret tast =
+  print_string "interpret\n";
+  Result.map_error string_of_errors (Interpreter.run tast)
+
+let run str =
+  let* tks = lex str in
+  let* cst = parse tks in
+  let* tast = solve cst in
+  let* value = interpret tast in
   Ok value
 
 let report res =
   match res with
-  | Error errs ->
-      let lines = List.map Error.to_string errs in
-      let lines = String.concat "\n\n" lines in
-      "Failure:\n" ^ lines
+  | Error errs -> "Failure:\n" ^ errs
   | Ok value -> "Success:\n" ^ Value.show value
 
 let source = read_lines [ "examples"; "hello.luz" ]
