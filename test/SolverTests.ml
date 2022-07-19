@@ -73,7 +73,30 @@ let suite =
          test_solver "let expression"
            "module Hello = { def hello = let x = 1 in x }"
            (Solver.TyCtx.of_list [ ("hello", Type.Int) ]);
-         test_failure "let expression scope"
+         test_solver "if expression True"
+           "module Hello = { def hello = if True then 1 else 2 }"
+           (Solver.TyCtx.of_list [ ("hello", Type.Int) ]);
+         test_solver "if expression False"
+           "module Hello = { def hello = if False then False else True }"
+           (Solver.TyCtx.of_list [ ("hello", Type.Bool) ]);
+         test_failure "let expression out-of-scope"
            "module Hello = { def foo = let x = 1 in x def main = x }"
            [ [ Text "Unbound variable: x" ] ];
+         test_failure "if expression condition-not-bool"
+           "module Hello = { def main = if 1 then 1 else 2 }"
+           [
+             [
+               Text ("Expected if-condition to be type: " ^ Type.show Bool);
+               Text ("But got type: " ^ Type.show Int);
+             ];
+           ];
+         test_failure "if expression branch-mismatch"
+           "module Hello = { def main = if True then 1 else False }"
+           [
+             [
+               Text "If branches must have the same type";
+               Text ("then-branch has type: " ^ Type.show Int);
+               Text ("but else-branch has type: " ^ Type.show Bool);
+             ];
+           ];
        ]

@@ -8,6 +8,21 @@ let error ?span lines : Error.t =
 let unbound_var name span : Error.t =
   error ~span [ Text ("Unbound variable: " ^ name) ]
 
+let if_branch_mismatch con_t alt_t span : Error.t =
+  error ~span
+    [
+      Text "If branches must have the same type";
+      Text ("then-branch has type: " ^ Type.show con_t);
+      Text ("but else-branch has type: " ^ Type.show alt_t);
+    ]
+
+let if_condition_not_bool cond_t span : Error.t =
+  error ~span
+    [
+      Text ("Expected if-condition to be type: " ^ Type.show Bool);
+      Text ("But got type: " ^ Type.show cond_t);
+    ]
+
 let rec expression (e : Cst.expr) (ctx : ty_ctx) :
     (Tast.expr * Type.t, Error.t) result =
   match e with
@@ -27,6 +42,18 @@ let rec expression (e : Cst.expr) (ctx : ty_ctx) :
       let ctx' = TyCtx.insert name ann ctx in
       let* body, type_ = expression body ctx' in
       Ok (Tast.Expr.Let { name; ann; def; body; span; type_ }, type_)
+  | If { cond; con; alt; span } -> (
+      let open Result.Syntax in
+      let* cond, cond_t = expression cond ctx in
+      match cond_t with
+      | Bool ->
+          let* con, con_t = expression con ctx in
+          let* alt, alt_t = expression alt ctx in
+          if con_t = alt_t then
+            Ok (Tast.Expr.If { cond; con; alt; span; type_ = con_t }, con_t)
+          else
+            Error (if_branch_mismatch con_t alt_t span)
+      | _ -> Error (if_condition_not_bool cond_t span))
 
 let binding (ctx : ty_ctx) (b : Cst.binding) :
     (Tast.binding * Type.t, Error.t) result =

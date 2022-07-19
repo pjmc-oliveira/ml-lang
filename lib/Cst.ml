@@ -4,6 +4,7 @@ module Expr = struct
     | Bool of { value : bool; span : Source.Span.t }
     | Var of { name : string; span : Source.Span.t }
     | Let of { name : string; def : t; body : t; span : Source.Span.t }
+    | If of { cond : t; con : t; alt : t; span : Source.Span.t }
   [@@deriving show]
 
   let rec to_ast e : Ast.Expr.t =
@@ -15,6 +16,11 @@ module Expr = struct
         let def = to_ast def in
         let body = to_ast body in
         Ast.Expr.Let { name; def; body }
+    | If { cond; con; alt; _ } ->
+        let cond = to_ast cond in
+        let con = to_ast con in
+        let alt = to_ast alt in
+        Ast.Expr.If { cond; con; alt }
 end
 
 module Binding = struct

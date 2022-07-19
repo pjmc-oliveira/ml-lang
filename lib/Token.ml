@@ -4,6 +4,9 @@ type t =
   | Def
   | Let
   | In
+  | If
+  | Then
+  | Else
   (* Symbols *)
   | Equal
   | LeftBrace
@@ -19,6 +22,9 @@ let to_string = function
   | Def -> "def"
   | Let -> "let"
   | In -> "in"
+  | If -> "if"
+  | Then -> "then"
+  | Else -> "else"
   | Equal -> "="
   | LeftBrace -> "{"
   | RightBrace -> "}"

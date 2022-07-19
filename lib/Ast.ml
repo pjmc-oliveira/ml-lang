@@ -4,6 +4,7 @@ module Expr = struct
     | Bool of { value : bool }
     | Var of { name : string }
     | Let of { name : string; def : t; body : t }
+    | If of { cond : t; con : t; alt : t }
   [@@deriving show]
 end
 

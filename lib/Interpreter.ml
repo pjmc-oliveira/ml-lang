@@ -41,6 +41,13 @@ let rec eval (e : Tast.expr) : Value.t t =
       let* thunk = defer def in
       let* _ = define name thunk in
       eval body
+  | If { cond; con; alt; _ } -> (
+      let* cond = eval cond in
+      let* cond = force cond in
+      match cond with
+      | Bool true -> eval con
+      | Bool false -> eval alt
+      | _ -> failwith ("Impossible if-cond not bool: " ^ Value.show cond))
 
 and force (v : Value.t) : Value.t t =
   match v with

@@ -174,7 +174,9 @@ let atom =
 
 let rec expression () =
   let expr =
-    one_of (error [ Text "Expected expression" ]) [ let_in (); atom ]
+    one_of
+      (error [ Text "Expected expression" ])
+      [ let_in (); it_then_else (); atom ]
   in
   let* expr, sp = span expr in
   pure (expr sp)
@@ -187,6 +189,15 @@ and let_in () =
   let* _ = expect In in
   let* body = expression () in
   pure (fun span -> Cst.Expr.Let { name; def; body; span })
+
+and it_then_else () =
+  let* _ = accept If in
+  let* cond = expression () in
+  let* _ = expect Then in
+  let* con = expression () in
+  let* _ = expect Else in
+  let* alt = expression () in
+  pure (fun span -> Cst.Expr.If { cond; con; alt; span })
 
 let def =
   let* () = accept Def in

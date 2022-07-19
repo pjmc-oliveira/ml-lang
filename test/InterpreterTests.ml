@@ -57,6 +57,11 @@ let suite =
            "module Hello = { def main = bye def bye = 1 }" (Value.Int 1);
          test_interpreter "let expression"
            "module Hello = { def main = let x = 2 in x }" (Value.Int 2);
+         test_interpreter "if expression True"
+           "module Hello = { def main = if True then let x = 1 in x else 2 }"
+           (Value.Int 1);
+         test_interpreter "if expression False"
+           "module Hello = { def main = if False then 1 else 2 }" (Value.Int 2);
          test_failure "local scope"
            "module Hello = { def foo = let x = 1 in x def main = x }"
            [ [ Text "Unbound variable: x" ] ];

@@ -11,6 +11,7 @@ module Expr = struct
         span : Source.Span.t;
         type_ : Type.t;
       }
+    | If of { cond : t; con : t; alt : t; span : Source.Span.t; type_ : Type.t }
   [@@deriving show]
 end
 

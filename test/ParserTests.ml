@@ -157,6 +157,26 @@ let ast_tests =
                  };
              ];
          });
+    test_parser_ast "if expression"
+      "module Hello = { def hello = if True then 1 else x }"
+      (Module.Module
+         {
+           name = "Hello";
+           bindings =
+             [
+               Binding.Def
+                 {
+                   name = "hello";
+                   expr =
+                     Expr.If
+                       {
+                         cond = Expr.Bool { value = true };
+                         con = Expr.Int { value = 1 };
+                         alt = Expr.Var { name = "x" };
+                       };
+                 };
+             ];
+         });
   ]
 
 let suite = "Parser" >::: cst_tests @ ast_tests

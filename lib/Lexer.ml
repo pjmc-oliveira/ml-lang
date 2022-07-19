@@ -9,6 +9,9 @@ let keywords =
     ("def", Def);
     ("let", Let);
     ("in", In);
+    ("if", If);
+    ("then", Then);
+    ("else", Else);
     ("True", Bool true);
     ("False", Bool false);
   ]
