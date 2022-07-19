@@ -105,6 +105,24 @@ let suite =
                 ("identity", Type.Arrow { from = Type.Int; to_ = Type.Int });
                 ("hello", Type.Int);
               ]);
+         test_solver ~initial_ctx:BuiltIns.ty_ctx "built-in functions"
+           "module Hello = {
+              def my_add = \\x : Int. \\y : Int.
+                add x y
+              def main = my_add 1 2
+            }"
+           TyCtx.(
+             union BuiltIns.ty_ctx
+               (of_list
+                  [
+                    ( "my_add",
+                      Type.Arrow
+                        {
+                          from = Type.Int;
+                          to_ = Type.Arrow { from = Type.Int; to_ = Type.Int };
+                        } );
+                    ("main", Type.Int);
+                  ]));
          (* Failures *)
          test_failure "let expression out-of-scope"
            "module Hello = { def foo = let x = 1 in x def main = x }"

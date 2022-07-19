@@ -69,6 +69,13 @@ let suite =
               def main = identity 1
             }"
            (Int 1);
+         test_interpreter "nested lambda"
+           "module Hello = {
+              def const = \\x : Int. \\y : Int.
+                x
+              def main = const 1 2
+            }"
+           (Int 1);
          test_interpreter "nested function application"
            "module Hello = {
               def identity = \\x : Int. x
@@ -82,6 +89,15 @@ let suite =
               def main = id1 (id2 1)
             }"
            (Int 1);
+         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+           "built-in functions"
+           "module Hello = {
+              def my_add = \\x : Int. \\y : Int.
+                add x y
+
+              def main = add 1 2
+            }"
+           (Int 3);
          (* Failure *)
          test_failure "local scope"
            "module Hello = { def foo = let x = 1 in x def main = x }"

@@ -27,9 +27,11 @@ let lex str =
 let parse tks = Result.map_error string_of_errors Parser.(parse module_ tks)
 
 let solve cst =
-  Result.map_error string_of_errors Solver.(module_ cst TyCtx.empty)
+  Result.map_error string_of_errors Solver.(module_ cst BuiltIns.ty_ctx)
 
-let interpret tast = Result.map_error string_of_errors (Interpreter.run tast)
+let interpret tast =
+  Result.map_error string_of_errors
+    (Interpreter.run ~context:BuiltIns.tm_ctx tast)
 
 let run str =
   let* tks = lex str in

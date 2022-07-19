@@ -58,6 +58,10 @@ let rec eval (e : Tast.expr) : Value.t t =
           let* arg = defer arg in
           let ctx' = TmCtx.insert param arg ctx in
           S.scope ctx' (eval body)
+      | Native func ->
+          let* arg = defer arg in
+          let* arg = force arg in
+          S.pure (func arg)
       | _ ->
           failwith ("Imposible cannot apply to non-function: " ^ Value.show func)
       )
@@ -68,6 +72,7 @@ and force (v : Value.t) : Value.t t =
   | Bool b -> S.pure (Value.Bool b)
   | Closure f -> S.pure (Value.Closure f)
   | Thunk { ctx; expr } -> S.scope ctx (eval expr)
+  | Native _ -> S.pure v
 
 let binding (b : Tast.binding) : Value.t t =
   match b with
