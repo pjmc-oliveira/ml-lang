@@ -26,6 +26,8 @@ let token src : (Token.t * Source.span * Source.t, Error.t) result =
       | '=' -> Ok (Equal, span, src')
       | '{' -> Ok (LeftBrace, span, src')
       | '}' -> Ok (RightBrace, span, src')
+      | '(' -> Ok (LeftParen, span, src')
+      | ')' -> Ok (RightParen, span, src')
       | _ when Char.is_alpha c -> (
           let name, src'' = Source.take_while Char.is_alphanum src in
           let span = Source.between src src'' in

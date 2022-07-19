@@ -164,19 +164,11 @@ let toplevel =
   let* () = drop_until (fun t -> t = Def) in
   pure ()
 
-let atom =
-  let* tk = token in
-  match tk with
-  | Int value -> pure (fun span -> Cst.Expr.Int { value; span })
-  | Bool value -> pure (fun span -> Cst.Expr.Bool { value; span })
-  | Ident name -> pure (fun span -> Cst.Expr.Var { name; span })
-  | _ -> fail_lines [ Text "Expected atom" ]
-
 let rec expression () =
   let expr =
     one_of
       (error [ Text "Expected expression" ])
-      [ let_in (); it_then_else (); atom ]
+      [ let_in (); it_then_else (); atom () ]
   in
   let* expr, sp = span expr in
   pure (expr sp)
@@ -198,6 +190,18 @@ and it_then_else () =
   let* _ = expect Else in
   let* alt = expression () in
   pure (fun span -> Cst.Expr.If { cond; con; alt; span })
+
+and atom () =
+  let* tk = token in
+  match tk with
+  | Int value -> pure (fun span -> Cst.Expr.Int { value; span })
+  | Bool value -> pure (fun span -> Cst.Expr.Bool { value; span })
+  | Ident name -> pure (fun span -> Cst.Expr.Var { name; span })
+  | LeftParen ->
+      let* expr = expression () in
+      let* _ = expect RightParen in
+      pure (fun span -> Cst.Expr.map_span (fun _ -> span) expr)
+  | _ -> fail_lines [ Text "Expected atom" ]
 
 let def =
   let* () = accept Def in

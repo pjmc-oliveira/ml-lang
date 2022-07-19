@@ -21,6 +21,13 @@ module Expr = struct
         let con = to_ast con in
         let alt = to_ast alt in
         If { cond; con; alt }
+
+  let map_span f = function
+    | Int { value; span } -> Int { value; span = f span }
+    | Bool { value; span } -> Bool { value; span = f span }
+    | Var { name; span } -> Var { name; span = f span }
+    | Let { name; def; body; span } -> Let { name; def; body; span = f span }
+    | If { cond; con; alt; span } -> If { cond; con; alt; span = f span }
 end
 
 module Binding = struct

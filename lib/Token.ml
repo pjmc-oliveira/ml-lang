@@ -11,6 +11,8 @@ type t =
   | Equal
   | LeftBrace
   | RightBrace
+  | LeftParen
+  | RightParen
   (* Literals *)
   | Ident of string
   | Int of int
@@ -28,6 +30,8 @@ let to_string = function
   | Equal -> "="
   | LeftBrace -> "{"
   | RightBrace -> "}"
+  | LeftParen -> "("
+  | RightParen -> ")"
   | Ident s -> s
   | Int n -> string_of_int n
   | Bool true -> "True"
