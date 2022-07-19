@@ -1,40 +1,6 @@
 module TyCtx = Ctx.Make (String)
 
 type ty_ctx = Type.t TyCtx.t
-type 'a t = ('a, ty_ctx, Error.t list) StateResult.t
-
-module S = StateResult
-open StateResult.Syntax
-
-let solve (s : 'a t) (ctx : ty_ctx) : ('a, Error.t list) result =
-  match s ctx with
-  | Ok (x, _) -> Ok x
-  | Error es -> Error es
-
-let solve_ctx (s : 'a t) (ctx : ty_ctx) : (ty_ctx, Error.t list) result =
-  match s ctx with
-  | Ok (_, ctx') -> Ok ctx'
-  | Error es -> Error es
-
-let alt (l : 'a t) (r : 'a t) : 'a t =
- fun ctx ->
-  match l ctx with
-  | Ok (x, ctx') -> Ok (x, ctx')
-  | Error e1 -> (
-      match r ctx with
-      | Ok (y, ctx') -> Ok (y, ctx')
-      | Error e2 -> Error (e1 @ e2))
-
-let result ?(errors = []) (s : 'a t) : ('a, Error.t list) result t =
-  alt (S.map (fun x -> Ok x) s) (S.pure (Error errors))
-
-let traverse_list (f : 'a -> 'b t) (ls : 'a list) : 'b list t =
-  List.fold_right
-    (fun x ys_t ->
-      let* y = f x in
-      let* ys = ys_t in
-      S.pure (y :: ys))
-    ls (S.pure [])
 
 let error ?span lines : Error.t =
   { kind = Error.Kind.Solver; location = span; lines }
@@ -42,62 +8,73 @@ let error ?span lines : Error.t =
 let unbound_var name span : Error.t =
   error ~span [ Text ("Unbound variable: " ^ name) ]
 
-let define name ty = S.mut (TyCtx.insert name ty)
-
-(* let lookup location name =
-   let* ctx = S.get in
-   match TyCtx.lookup name ctx with
-   | Some value -> S.pure value
-   | None -> S.fail [ error ~location [ Text ("Unbound variable: " ^ name) ] ] *)
-
-let rec expression (e : Cst.expr) : (Tast.expr * Type.t) t =
+let rec expression (e : Cst.expr) (ctx : ty_ctx) :
+    (Tast.expr * Type.t, Error.t) result =
   match e with
   | Const { value; span } ->
       let type_ = Type.Int in
-      S.pure (Tast.Expr.Const { value; span; type_ }, type_)
+      Ok (Tast.Expr.Const { value; span; type_ }, type_)
   | Var { name; span } -> (
-      let* ctx = S.get in
       match TyCtx.lookup name ctx with
-      | None -> S.fail [ unbound_var name span ]
-      | Some type_ -> S.pure (Tast.Expr.Var { name; span; type_ }, type_))
+      | Some type_ -> Ok (Tast.Expr.Var { name; span; type_ }, type_)
+      | None -> Error (unbound_var name span))
   | Let { name; def; body; span } ->
-      let* def, ann = expression def in
-      S.local
-        (let* _ = define name ann in
-         let* body, type_ = expression body in
-         S.pure (Tast.Expr.Let { name; ann; def; body; span; type_ }, type_))
+      let open Result.Syntax in
+      let* def, ann = expression def ctx in
+      let ctx' = TyCtx.insert name ann ctx in
+      let* body, type_ = expression body ctx' in
+      Ok (Tast.Expr.Let { name; ann; def; body; span; type_ }, type_)
 
-let binding (b : Cst.binding) : Tast.binding t =
+let binding (ctx : ty_ctx) (b : Cst.binding) :
+    (Tast.binding * Type.t, Error.t) result =
   match b with
   | Def { name; expr; span } ->
-      let* expr, type_ = expression expr in
-      let* _ = S.mut (TyCtx.insert name type_) in
-      S.pure (Tast.Binding.Def { name; expr; span; type_ })
+      let open Result.Syntax in
+      let* expr, type_ = expression expr ctx in
+      Ok (Tast.Binding.Def { name; expr; span; type_ }, type_)
 
-let rec multiple_passes (remaining : int) (bs : Cst.binding list) :
-    Tast.binding list t =
- fun ctx ->
-  match
-    traverse_list
-      (fun (Cst.Binding.Def b) ->
-        result
-          ~errors:[ error [ Text ("problem with " ^ b.name) ] ]
-          (binding (Def b)))
-      bs ctx
-  with
-  | Ok (bs', ctx') ->
-      let current = List.length (List.filter Result.is_error bs') in
-      if current = 0 then
-        Ok (List.map Result.get_ok bs', ctx')
-      else if current < remaining then
-        multiple_passes current bs ctx'
-      else
-        let es = List.map Result.get_error (List.filter Result.is_error bs') in
-        Error (List.flatten es)
-  | Error es -> Error es
+let rec multiple_passes (previous : int) (bindings : Cst.binding list)
+    (ctx : ty_ctx) : (Tast.binding list, Error.t list) result =
+  let rec loop errs oks bs ctx =
+    match bs with
+    | [] ->
+        if errs = [] then
+          Ok (List.rev oks)
+        else
+          let current = List.length errs in
+          if current < previous then
+            multiple_passes current bindings ctx
+          else
+            let errors = List.map (fun (_, e) -> e) errs in
+            Error errors
+    | b :: bs' -> (
+        match binding ctx b with
+        | Ok ((Def { name; _ } as tast), ty) ->
+            let ctx' = TyCtx.insert name ty ctx in
+            loop errs (tast :: oks) bs' ctx'
+        | Error e -> loop ((b, e) :: errs) oks bs' ctx)
+  in
+  loop [] [] bindings ctx
 
-let module_ (m : Cst.module_) : Tast.module_ t =
+let module_ (m : Cst.module_) (ctx : ty_ctx) :
+    (Tast.module_, Error.t list) result =
   match m with
   | Module { name; bindings; span } ->
-      let* bindings = multiple_passes (List.length bindings) bindings in
-      S.pure (Tast.Module.Module { name; bindings; span })
+      let open Result.Syntax in
+      let* bindings = multiple_passes (List.length bindings) bindings ctx in
+      Ok (Tast.Module.Module { name; bindings; span })
+
+let solve_module (m : Cst.module_) (ctx : ty_ctx) :
+    (ty_ctx, Error.t list) result =
+  let open Result.Syntax in
+  let insert_to_ctx ctx (name, ty) = TyCtx.insert name ty ctx in
+  let type_of_binding b =
+    match b with
+    | Tast.Binding.Def { name; type_; _ } -> (name, type_)
+  in
+  let* m = module_ m ctx in
+  match m with
+  | Module { bindings; _ } ->
+      let bs = List.map type_of_binding bindings in
+      let ctx = List.fold_left insert_to_ctx ctx bs in
+      Ok ctx

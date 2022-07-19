@@ -31,7 +31,7 @@ let parse tks =
 
 let solve cst =
   print_string "solve\n";
-  Result.map_error string_of_errors Solver.(solve (module_ cst) TyCtx.empty)
+  Result.map_error string_of_errors Solver.(module_ cst TyCtx.empty)
 
 let interpret tast =
   print_string "interpret\n";
