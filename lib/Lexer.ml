@@ -42,7 +42,9 @@ let token src : (Token.t * Source.span * Source.t, Error.t) result =
               let location = Source.between src src' in
               fail [ Text "Unexpected character: "; Code (str, location) ])
       | _ when Char.is_alpha c -> (
-          let name, src'' = Source.take_while Char.is_alphanum src in
+          let name, src'' =
+            Source.take_while (fun c -> Char.is_alphanum c || c = '_') src
+          in
           let span = Source.between src src'' in
           match StrMap.find_opt name keywords with
           | None -> Ok (Ident name, span, src'')
