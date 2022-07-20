@@ -34,6 +34,18 @@ let if_condition_not_bool cond_t span : Error.t =
       Text ("But got type: " ^ Type.show cond_t);
     ]
 
+let assert_equal ?span exprected_t actual_t : (unit, Error.t) result =
+  if exprected_t = actual_t then
+    Ok ()
+  else
+    Error
+      (error ?span
+         [
+           Text "Type mismatch";
+           Text ("Expected: " ^ Type.show exprected_t);
+           Text ("But got: " ^ Type.show actual_t);
+         ])
+
 let rec solve_type (ty : Cst.Type.t) : (Type.t, Error.t) result =
   let open Result.Syntax in
   match ty with
@@ -47,7 +59,7 @@ let rec solve_type (ty : Cst.Type.t) : (Type.t, Error.t) result =
       let* to_ = solve_type to_ in
       Ok (Type.Arrow { from; to_ })
 
-let rec expression (e : Cst.expr) (ctx : ty_ctx) :
+let rec infer (e : Cst.expr) (ctx : ty_ctx) :
     (Tast.expr * Type.t, Error.t) result =
   let open Result.Syntax in
   match e with
@@ -62,48 +74,65 @@ let rec expression (e : Cst.expr) (ctx : ty_ctx) :
       | Some type_ -> Ok (Tast.Expr.Var { name; span; type_ }, type_)
       | None -> Error (unbound_var name span))
   | Let { name; def; body; span } ->
-      let* def, def_t = expression def ctx in
+      let* def, def_t = infer def ctx in
       let ctx' = TyCtx.insert name def_t ctx in
-      let* body, type_ = expression body ctx' in
+      let* body, type_ = infer body ctx' in
       Ok (Tast.Expr.Let { name; def_t; def; body; span; type_ }, type_)
-  | If { cond; con; alt; span } -> (
-      let* cond, cond_t = expression cond ctx in
-      match cond_t with
-      | Bool ->
-          let* con, con_t = expression con ctx in
-          let* alt, alt_t = expression alt ctx in
-          if con_t = alt_t then
-            Ok (Tast.Expr.If { cond; con; alt; span; type_ = con_t }, con_t)
-          else
-            Error (if_branch_mismatch con_t alt_t span)
-      | _ -> Error (if_condition_not_bool cond_t span))
+  | If { cond; con; alt; span } ->
+      let* cond, cond_t = infer cond ctx in
+      let* _ =
+        Result.map_error
+          (fun _ -> if_condition_not_bool cond_t span)
+          (assert_equal Bool cond_t)
+      in
+      let* con, con_t = infer con ctx in
+      let* alt, alt_t = infer alt ctx in
+      if con_t = alt_t then
+        Ok (Tast.Expr.If { cond; con; alt; span; type_ = con_t }, con_t)
+      else
+        Error (if_branch_mismatch con_t alt_t span)
   | Lam { param; param_t; body; span } -> (
       match param_t with
       | None -> failwith "TODO"
       | Some param_t ->
           let* param_t = solve_type param_t in
           let ctx' = TyCtx.insert param param_t ctx in
-          let* body, type_ = expression body ctx' in
+          let* body, type_ = infer body ctx' in
           Ok
             ( Tast.Expr.Lam { param; param_t; body; span; type_ },
               Type.Arrow { from = param_t; to_ = type_ } ))
   | App { func; arg; span } -> (
-      let* func, func_t = expression func ctx in
+      let* func, func_t = infer func ctx in
       match func_t with
       | Arrow { from = param_t; to_ = type_ } ->
-          let* arg, arg_t = expression arg ctx in
+          let* arg, arg_t = infer arg ctx in
           if param_t = arg_t then
             Ok (Tast.Expr.App { func; arg; span; type_ }, type_)
           else
             Error (wrong_arg_type param_t arg_t span)
       | _ -> Error (expr_not_a_function func span))
+  | Ann { expr; ann; _ } ->
+      let* type_ = solve_type ann in
+      let* expr = check expr type_ ctx in
+      Ok (expr, type_)
+
+and check (e : Cst.expr) (expected_t : Type.t) (ctx : ty_ctx) :
+    (Tast.expr, Error.t) result =
+  let open Result.Syntax in
+  let* expr, actual_t = infer e ctx in
+  let* _ = assert_equal expected_t actual_t in
+  Ok expr
+
+and infer_int value span =
+  let type_ = Type.Int in
+  Ok (Tast.Expr.Int { value; span; type_ }, type_)
 
 let binding (ctx : ty_ctx) (b : Cst.binding) :
     (Tast.binding * Type.t, Error.t) result =
   let open Result.Syntax in
   match b with
   | Def { name; expr; span } ->
-      let* expr, type_ = expression expr ctx in
+      let* expr, type_ = infer expr ctx in
       Ok (Tast.Binding.Def { name; expr; span; type_ }, type_)
 
 let rec multiple_passes (previous : int) (bindings : Cst.binding list)

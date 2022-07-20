@@ -179,7 +179,7 @@ let type_ () : Cst.type_ t =
 let rec expression () : Cst.expr t =
   one_of
     (error [ Text "Expected expression" ])
-    [ let_in (); it_then_else (); lambda (); application () ]
+    [ let_in (); it_then_else (); lambda (); annotation () ]
 
 and let_in () =
   with_span
@@ -211,6 +211,18 @@ and lambda () =
      let* body = expression () in
      pure (fun span ->
          Cst.Expr.Lam { param; param_t = Some param_t; body; span }))
+
+and annotation () =
+  with_span
+    (let* expr = application () in
+     one_of
+       (error [ Text "Expected annotation" ])
+       [
+         (let* _ = accept Colon in
+          let* ann = type_ () in
+          pure (fun span -> Cst.Expr.Ann { expr; ann; span }));
+         pure (fun _ -> expr);
+       ])
 
 and application () =
   with_span

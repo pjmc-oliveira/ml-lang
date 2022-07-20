@@ -85,6 +85,9 @@ let suite =
            "module Hello = { def hello = \\x : Int. True }"
            (TyCtx.of_list
               [ ("hello", Type.Arrow { from = Type.Int; to_ = Type.Bool }) ]);
+         test_solver "annotatated expression"
+           "module Hello = { def hello = 1 : Int }"
+           (TyCtx.of_list [ ("hello", Type.Int) ]);
          test_solver "function application"
            "module Hello = {
               def identity = \\x : Int. x
@@ -157,6 +160,15 @@ let suite =
                Text "Wrong argument type";
                Text ("Expected: " ^ Type.show Int);
                Text ("But got: " ^ Type.show Bool);
+             ];
+           ];
+         test_failure "wrong annotatated expression"
+           "module Hello = { def hello = 1 : Bool }"
+           [
+             [
+               Text "Type mismatch";
+               Text ("Expected: " ^ Type.show Bool);
+               Text ("But got: " ^ Type.show Int);
              ];
            ];
        ]

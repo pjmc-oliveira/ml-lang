@@ -69,6 +69,11 @@ let suite =
               def main = identity 1
             }"
            (Int 1);
+         test_interpreter "annotated expression"
+           "module Hello = {
+              def main = True : Bool
+            }"
+           (Bool true);
          test_interpreter "nested lambda"
            "module Hello = {
               def const = \\x : Int. \\y : Int.

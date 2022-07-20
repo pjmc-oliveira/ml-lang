@@ -116,6 +116,25 @@ let ast_tests =
            name = "Hello";
            bindings = [ Def { name = "hello"; expr = Bool { value = false } } ];
          });
+    test_parser_ast "type annotated expression"
+      "module Hello = { def hello = 1 : Int }"
+      (Module
+         {
+           name = "Hello";
+           bindings =
+             [
+               Def
+                 {
+                   name = "hello";
+                   expr =
+                     Ann
+                       {
+                         expr = Int { value = 1 };
+                         ann = Const { name = "Int" };
+                       };
+                 };
+             ];
+         });
     test_parser_ast "parenthesized expression"
       "module Hello = { def hello = if (let x = True in x) then 1 else 2 }"
       (Module

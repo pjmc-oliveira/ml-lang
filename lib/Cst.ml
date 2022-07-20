@@ -27,6 +27,7 @@ module Expr = struct
         span : Source.Span.t;
       }
     | App of { func : t; arg : t; span : Source.Span.t }
+    | Ann of { expr : t; ann : Type.t; span : Source.Span.t }
   [@@deriving show]
 
   let rec to_ast e : Ast.Expr.t =
@@ -51,6 +52,10 @@ module Expr = struct
         let func = to_ast func in
         let arg = to_ast arg in
         App { func; arg }
+    | Ann { expr; ann; _ } ->
+        let ann = Type.to_ast ann in
+        let expr = to_ast expr in
+        Ann { expr; ann }
 
   let map_span f = function
     | Int { value; span } -> Int { value; span = f span }
@@ -61,6 +66,7 @@ module Expr = struct
     | Lam { param; param_t; body; span } ->
         Lam { param; param_t; body; span = f span }
     | App { func; arg; span } -> App { func; arg; span = f span }
+    | Ann { expr; ann; span } -> Ann { expr; ann; span = f span }
 end
 
 module Binding = struct

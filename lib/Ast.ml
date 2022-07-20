@@ -12,6 +12,7 @@ module Expr = struct
     | If of { cond : t; con : t; alt : t }
     | Lam of { param : string; param_t : Type.t option; body : t }
     | App of { func : t; arg : t }
+    | Ann of { expr : t; ann : Type.t }
   [@@deriving show]
 end
 
