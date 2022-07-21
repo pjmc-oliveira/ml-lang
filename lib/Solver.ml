@@ -188,9 +188,16 @@ let binding (ctx : ty_ctx) (b : Cst.binding) :
     (Tast.binding * Type.t, Error.t) result =
   let open Result.Syntax in
   match b with
-  | Def { name; expr; span } ->
-      let* expr, type_ = infer expr ctx in
-      Ok (Tast.Binding.Def { name; expr; span; type_ }, type_)
+  | Def { name; expr; span; ann } -> (
+      match ann with
+      | Some ann ->
+          let* type_ = solve_type ann in
+          let ctx' = TyCtx.insert name type_ ctx in
+          let* expr = check expr type_ ctx' in
+          Ok (Tast.Binding.Def { name; expr; span; type_ }, type_)
+      | None ->
+          let* expr, type_ = infer expr ctx in
+          Ok (Tast.Binding.Def { name; expr; span; type_ }, type_))
 
 let rec multiple_passes (previous : int) (bindings : Cst.binding list)
     (ctx : ty_ctx) : (Tast.binding list, Error.t list) result =

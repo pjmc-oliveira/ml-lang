@@ -17,76 +17,84 @@ let traverse_list (f : 'a -> 'b t) (ls : 'a list) : 'b list t =
       S.pure (y :: ys))
     ls (S.pure [])
 
-let define name value = S.mut (TmCtx.insert name value)
-
-let lookup location name =
-  let* ctx = S.get in
+let lookup location name ctx =
   match TmCtx.lookup name ctx with
-  | Some value -> S.pure value
-  | None -> S.fail [ error ~location [ Text ("Unbound variable: " ^ name) ] ]
+  | Some value -> Ok value
+  | None -> Error (error ~location [ Text ("Unbound variable: " ^ name) ])
 
-let defer (expr : Tast.expr) : Value.t t =
-  let* ctx = S.get in
-  S.pure (Value.Thunk { ctx; expr })
+let define name value ctx = TmCtx.insert name value ctx
 
-let rec eval (e : Tast.expr) : Value.t t =
+let defer (expr : Tast.expr) (ctx : tm_ctx) : Value.t =
+  Value.Thunk { ctx; expr }
+
+let rec eval (e : Tast.expr) (ctx : tm_ctx) : (Value.t, Error.t) result =
+  let open Result.Syntax in
   match e with
-  | Int { value; _ } -> S.pure (Value.Int value)
-  | Bool { value; _ } -> S.pure (Value.Bool value)
-  | Var { name; span; _ } ->
-      let* value = lookup span name in
-      let* value = force value in
-      S.pure value
+  | Int { value; _ } -> Ok (Value.Int value)
+  | Bool { value; _ } -> Ok (Value.Bool value)
+  | Var { name; span; _ } -> lookup span name ctx
   | Let { name; def; body; _ } ->
-      let* thunk = defer def in
-      let* _ = define name thunk in
-      eval body
+      (* TODO: Recursive let-bindings *)
+      let thunk = defer def ctx in
+      let ctx' = define name thunk ctx in
+      eval body ctx'
   | If { cond; con; alt; _ } -> (
-      let* cond = eval cond in
+      let* cond = eval cond ctx in
       let* cond = force cond in
       match cond with
-      | Bool true -> eval con
-      | Bool false -> eval alt
+      | Bool true -> eval con ctx
+      | Bool false -> eval alt ctx
       | _ -> failwith ("Impossible if-cond not bool: " ^ Value.show cond))
-  | Lam { param; body; _ } ->
-      let* ctx = S.get in
-      S.pure (Value.Closure { ctx; param; body })
+  | Lam { param; body; _ } -> Ok (Value.Closure { ctx; param; body })
   | App { func; arg; _ } -> (
-      let* func = eval func in
+      let* func = eval func ctx in
+      let* func = force func in
       match func with
       | Closure { ctx; param; body } ->
-          let* arg = defer arg in
-          let ctx' = TmCtx.insert param arg ctx in
-          S.scope ctx' (eval body)
+          let arg = defer arg ctx in
+          let ctx' = define param arg ctx in
+          eval body ctx'
       | Native func ->
-          let* arg = defer arg in
+          (* Defer to create a thunk value from the ast
+             then force to pass it into the native function *)
+          let arg = defer arg ctx in
           let* arg = force arg in
-          S.pure (func arg)
+          Ok (func arg)
       | _ ->
           failwith ("Imposible cannot apply to non-function: " ^ Value.show func)
       )
 
-and force (v : Value.t) : Value.t t =
+and force (v : Value.t) : (Value.t, Error.t) result =
+  let open Result.Syntax in
   match v with
-  | Int n -> S.pure (Value.Int n)
-  | Bool b -> S.pure (Value.Bool b)
-  | Closure f -> S.pure (Value.Closure f)
-  | Thunk { ctx; expr } -> S.scope ctx (eval expr)
-  | Native _ -> S.pure v
+  | Int n -> Ok (Value.Int n)
+  | Bool b -> Ok (Value.Bool b)
+  | Closure f -> Ok (Value.Closure f)
+  | Thunk { ctx; expr } ->
+      let* expr = eval expr ctx in
+      force expr
+  | Native _ -> Ok v
 
-let binding (b : Tast.binding) : Value.t t =
+let binding (b : Tast.binding) (ctx : tm_ctx) :
+    (Value.t * tm_ctx, Error.t list) result =
+  let open Result.Syntax in
+  Result.map_error
+    (fun e -> [ e ])
+    (match b with
+    | Def { name; expr; _ } ->
+        let self = defer expr ctx in
+        let ctx' = define name self ctx in
+        let* value = eval expr ctx' in
+        let ctx'' = define name self ctx' in
+        Ok (value, ctx''))
+
+let defer_binding (b : Tast.binding) (ctx : tm_ctx) :
+    (Value.t * tm_ctx, Error.t list) result =
   match b with
   | Def { name; expr; _ } ->
-      let* value = eval expr in
-      let* _ = define name value in
-      S.pure value
-
-let defer_binding (b : Tast.binding) : Value.t t =
-  match b with
-  | Def { name; expr; _ } ->
-      let* thunk = defer expr in
-      let* _ = define name thunk in
-      S.pure thunk
+      let thunk = defer expr ctx in
+      let ctx' = define name thunk ctx in
+      Ok (thunk, ctx')
 
 let find_entrypoint entrypoint bindings : Tast.binding option =
   List.find_opt
@@ -115,6 +123,9 @@ let module_ entrypoint (m : Tast.module_) : Value.t t =
 
 let run ?(entrypoint = "main") ?(context = TmCtx.empty) (m : Tast.module_) :
     (Value.t, Error.t list) result =
+  let open Result.Syntax in
   match (module_ entrypoint) m context with
-  | Ok (value, _) -> Ok value
+  | Ok (value, _) ->
+      let* value = Result.map_error (fun e -> [ e ]) (force value) in
+      Ok value
   | Error e -> Error e

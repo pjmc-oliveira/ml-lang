@@ -21,6 +21,27 @@ module Expr = struct
       }
     | App of { func : t; arg : t; span : Source.Span.t; type_ : Type.t }
   [@@deriving show]
+
+  let rec to_string = function
+    | Int { value; _ } -> string_of_int value
+    | Bool { value; _ } -> if value then "True" else "False"
+    | Var { name; _ } -> name
+    | Let { name; def; body; _ } ->
+        "let " ^ name ^ " = " ^ to_string def ^ " in " ^ to_string body
+    | If { cond; con; alt; _ } ->
+        "if " ^ to_string cond ^ " then " ^ to_string con ^ " else "
+        ^ to_string alt
+    | Lam { param; body; _ } -> "(\\" ^ param ^ ". " ^ to_string body ^ ")"
+    | App { func; arg; _ } -> "(" ^ to_string func ^ " " ^ to_string arg ^ ")"
+
+  let span = function
+    | Int { span; _ }
+    | Bool { span; _ }
+    | Var { span; _ }
+    | Let { span; _ }
+    | If { span; _ }
+    | Lam { span; _ }
+    | App { span; _ } -> span
 end
 
 module Binding = struct

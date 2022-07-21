@@ -46,6 +46,7 @@ let cst_tests =
                Def
                  {
                    name = "hello";
+                   ann = None;
                    expr =
                      Int
                        {
@@ -68,6 +69,7 @@ let cst_tests =
                Def
                  {
                    name = "hello";
+                   ann = None;
                    expr =
                      Int
                        {
@@ -80,6 +82,7 @@ let cst_tests =
                Def
                  {
                    name = "bye";
+                   ann = None;
                    expr =
                      Int
                        {
@@ -102,19 +105,26 @@ let ast_tests =
       (Module
          {
            name = "Hello";
-           bindings = [ Def { name = "hello"; expr = Int { value = 1 } } ];
+           bindings =
+             [ Def { name = "hello"; ann = None; expr = Int { value = 1 } } ];
          });
     test_parser_ast "True literal" "module Hello = { def hello = True }"
       (Module
          {
            name = "Hello";
-           bindings = [ Def { name = "hello"; expr = Bool { value = true } } ];
+           bindings =
+             [
+               Def { name = "hello"; ann = None; expr = Bool { value = true } };
+             ];
          });
     test_parser_ast "True literal" "module Hello = { def hello = False }"
       (Module
          {
            name = "Hello";
-           bindings = [ Def { name = "hello"; expr = Bool { value = false } } ];
+           bindings =
+             [
+               Def { name = "hello"; ann = None; expr = Bool { value = false } };
+             ];
          });
     test_parser_ast "type annotated expression"
       "module Hello = { def hello = 1 : Int }"
@@ -126,6 +136,7 @@ let ast_tests =
                Def
                  {
                    name = "hello";
+                   ann = None;
                    expr =
                      Ann
                        {
@@ -145,6 +156,7 @@ let ast_tests =
                Def
                  {
                    name = "hello";
+                   ann = None;
                    expr =
                      If
                        {
@@ -168,8 +180,8 @@ let ast_tests =
            name = "Hello";
            bindings =
              [
-               Def { name = "hello"; expr = Int { value = 1 } };
-               Def { name = "bye"; expr = Var { name = "hello" } };
+               Def { name = "hello"; ann = None; expr = Int { value = 1 } };
+               Def { name = "bye"; ann = None; expr = Var { name = "hello" } };
              ];
          });
     test_parser_ast "let expression"
@@ -182,6 +194,7 @@ let ast_tests =
                Def
                  {
                    name = "hello";
+                   ann = None;
                    expr =
                      Let
                        {
@@ -202,6 +215,7 @@ let ast_tests =
                Def
                  {
                    name = "hello";
+                   ann = None;
                    expr =
                      If
                        {
@@ -222,6 +236,7 @@ let ast_tests =
                Def
                  {
                    name = "hello";
+                   ann = None;
                    expr =
                      Lam
                        {
@@ -241,6 +256,7 @@ let ast_tests =
                Def
                  {
                    name = "hello";
+                   ann = None;
                    expr =
                      Lam
                        {
@@ -261,6 +277,7 @@ let ast_tests =
                Def
                  {
                    name = "hello";
+                   ann = None;
                    expr =
                      Ann
                        {
@@ -291,6 +308,7 @@ let ast_tests =
                Def
                  {
                    name = "hello";
+                   ann = None;
                    expr =
                      App
                        {
@@ -320,6 +338,7 @@ let ast_tests =
                Def
                  {
                    name = "hello";
+                   ann = None;
                    expr =
                      App
                        {
@@ -331,6 +350,21 @@ let ast_tests =
                                arg = Var { name = "x" };
                              };
                        };
+                 };
+             ];
+         });
+    test_parser_ast "top level type annotation"
+      "module Hello = { def hello : Bool = True }"
+      (Module
+         {
+           name = "Hello";
+           bindings =
+             [
+               Def
+                 {
+                   name = "hello";
+                   ann = Some (Const { name = "Bool" });
+                   expr = Bool { value = true };
                  };
              ];
          });

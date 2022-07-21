@@ -276,9 +276,10 @@ and atom () =
 let def =
   let* () = accept Def in
   let* name = identifier in
+  let* ann = optional (accept Colon *> type_ ()) in
   let* () = expect Equal in
   let* expr = expression () in
-  pure (fun span -> Cst.Binding.Def { name; expr; span })
+  pure (fun span -> Cst.Binding.Def { name; ann; expr; span })
 
 let binding =
   let* b, sp = span_of (one_of (error [ Text "Expected binding" ]) [ def ]) in

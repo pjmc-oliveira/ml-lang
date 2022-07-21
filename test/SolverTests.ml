@@ -89,6 +89,13 @@ let suite =
            "module Hello = { def hello = (\\x x) : Int -> Int }"
            (TyCtx.of_list
               [ ("hello", Type.Arrow { from = Type.Int; to_ = Type.Int }) ]);
+         test_solver "top level function annotation"
+           "module Hello = { def hello : Int -> Bool  = \\x False }"
+           (TyCtx.of_list
+              [ ("hello", Type.Arrow { from = Type.Int; to_ = Type.Bool }) ]);
+         test_solver "top level recursive value with annotation"
+           "module Hello = { def hello : Int  = hello }"
+           (TyCtx.of_list [ ("hello", Type.Int) ]);
          test_solver "annotatated expression"
            "module Hello = { def hello = 1 : Int }"
            (TyCtx.of_list [ ("hello", Type.Int) ]);

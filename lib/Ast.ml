@@ -17,7 +17,8 @@ module Expr = struct
 end
 
 module Binding = struct
-  type t = Def of { name : string; expr : Expr.t } [@@deriving show]
+  type t = Def of { name : string; ann : Type.t option; expr : Expr.t }
+  [@@deriving show]
 end
 
 module Module = struct

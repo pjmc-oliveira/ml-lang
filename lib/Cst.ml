@@ -70,14 +70,21 @@ module Expr = struct
 end
 
 module Binding = struct
-  type t = Def of { name : string; expr : Expr.t; span : Source.Span.t }
+  type t =
+    | Def of {
+        name : string;
+        ann : Type.t option;
+        expr : Expr.t;
+        span : Source.Span.t;
+      }
   [@@deriving show]
 
   let to_ast b : Ast.Binding.t =
     match b with
-    | Def { name; expr; _ } ->
+    | Def { name; ann; expr; _ } ->
+        let ann = Option.map Type.to_ast ann in
         let expr = Expr.to_ast expr in
-        Def { name; expr }
+        Def { name; ann; expr }
 end
 
 module Module = struct
