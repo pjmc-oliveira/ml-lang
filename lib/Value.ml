@@ -6,6 +6,7 @@ type t =
   | Closure of { ctx : t TmCtx.t; param : string; body : Tast.expr }
   | Thunk of { ctx : t TmCtx.t; expr : Tast.expr }
   | Native of (t -> t)
+  | Fix of { ctx : t TmCtx.t; name : string; expr : Tast.expr }
 
 let show = function
   | Int n -> string_of_int n
@@ -14,6 +15,7 @@ let show = function
   | Closure _ -> "<closure>"
   | Thunk _ -> "<thunk>"
   | Native _ -> "<native>"
+  | Fix _ -> "<fixpoint>"
 
 let lift (f : t -> t) : t = Native f
 let lift2 (f : t -> t -> t) : t = Native (fun x -> lift (f x))

@@ -35,8 +35,8 @@ let rec eval (e : Tast.expr) (ctx : tm_ctx) : (Value.t, Error.t) result =
   | Var { name; span; _ } -> lookup span name ctx
   | Let { name; def; body; _ } ->
       (* TODO: Recursive let-bindings *)
-      let thunk = defer def ctx in
-      let ctx' = define name thunk ctx in
+      let def = defer def ctx in
+      let ctx' = define name def ctx in
       eval body ctx'
   | If { cond; con; alt; _ } -> (
       let* cond = eval cond ctx in
@@ -47,13 +47,13 @@ let rec eval (e : Tast.expr) (ctx : tm_ctx) : (Value.t, Error.t) result =
       | _ -> failwith ("Impossible if-cond not bool: " ^ Value.show cond))
   | Lam { param; body; _ } -> Ok (Value.Closure { ctx; param; body })
   | App { func; arg; _ } -> (
+      let arg' = defer arg ctx in
       let* func = eval func ctx in
       let* func = force func in
       match func with
-      | Closure { ctx; param; body } ->
-          let arg = defer arg ctx in
-          let ctx' = define param arg ctx in
-          eval body ctx'
+      | Closure { ctx = closure_ctx; param; body } ->
+          let closure_ctx' = define param arg' closure_ctx in
+          eval body closure_ctx'
       | Native func ->
           (* Defer to create a thunk value from the ast
              then force to pass it into the native function *)
@@ -74,6 +74,10 @@ and force (v : Value.t) : (Value.t, Error.t) result =
       let* expr = eval expr ctx in
       force expr
   | Native _ -> Ok v
+  | Fix { ctx; name; expr } ->
+      let ctx' = define name (Value.Fix { ctx; name; expr }) ctx in
+      let* expr = eval expr ctx' in
+      force expr
 
 let binding (b : Tast.binding) (ctx : tm_ctx) :
     (Value.t * tm_ctx, Error.t list) result =
@@ -81,20 +85,17 @@ let binding (b : Tast.binding) (ctx : tm_ctx) :
   Result.map_error
     (fun e -> [ e ])
     (match b with
-    | Def { name; expr; _ } ->
-        let self = defer expr ctx in
-        let ctx' = define name self ctx in
-        let* value = eval expr ctx' in
-        let ctx'' = define name self ctx' in
-        Ok (value, ctx''))
+    | Def { expr; _ } ->
+        let* value = eval expr ctx in
+        Ok (value, ctx))
 
 let defer_binding (b : Tast.binding) (ctx : tm_ctx) :
     (Value.t * tm_ctx, Error.t list) result =
   match b with
   | Def { name; expr; _ } ->
-      let thunk = defer expr ctx in
-      let ctx' = define name thunk ctx in
-      Ok (thunk, ctx')
+      let fixpoint = Value.Fix { ctx; name; expr } in
+      let ctx' = define name fixpoint ctx in
+      Ok (fixpoint, ctx')
 
 let find_entrypoint entrypoint bindings : Tast.binding option =
   List.find_opt
@@ -106,8 +107,6 @@ let find_entrypoint entrypoint bindings : Tast.binding option =
 let module_ entrypoint (m : Tast.module_) : Value.t t =
   match m with
   | Module { bindings; span; _ } ->
-      (* TODO: There has to be a better way to do this *)
-      let* _ = traverse_list defer_binding bindings in
       let* _ = traverse_list defer_binding bindings in
       let* b =
         match find_entrypoint entrypoint bindings with

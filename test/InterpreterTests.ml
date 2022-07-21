@@ -118,9 +118,9 @@ let suite =
               def main = add 1 2
             }"
            (Int 3);
-         (* test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
-            "recursive function"
-            "module Hello = {
+         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+           "recursive function"
+           "module Hello = {
                def fact : Int -> Int = \\x
                  if eq 0 x then
                    1
@@ -129,7 +129,7 @@ let suite =
 
                def main = fact 5
              }"
-            (Int 120); *)
+           (Int 120);
          (* Failure *)
          test_failure "local scope"
            "module Hello = { def foo = let x = 1 in x def main = x }"
