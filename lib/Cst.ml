@@ -11,6 +11,10 @@ module Type = struct
         let from = to_ast from in
         let to_ = to_ast to_ in
         Arrow { from; to_ }
+
+  let map_span f = function
+    | Const { name; span } -> Const { name; span = f span }
+    | Arrow { from; to_; span } -> Arrow { from; to_; span = f span }
 end
 
 module Expr = struct

@@ -198,9 +198,15 @@ let rec type_ () : Cst.type_ t =
        ])
 
 and type_atom () : Cst.type_ t =
-  (* TODO: Parens *)
-  let* name, span = span_of identifier in
-  pure (Cst.Type.Const { name; span })
+  with_span
+    (let* tk = token in
+     match tk with
+     | Ident name -> pure (fun span -> Cst.Type.Const { name; span })
+     | LeftParen ->
+         let* expr = type_ () in
+         let* _ = expect RightParen in
+         pure (fun span -> Cst.Type.map_span (fun _ -> span) expr)
+     | _ -> fail_lines [ Text "Expected type atom" ])
 
 let rec expression () : Cst.expr t =
   one_of

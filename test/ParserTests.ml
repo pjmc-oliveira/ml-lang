@@ -368,6 +368,43 @@ let ast_tests =
                  };
              ];
          });
+    test_parser_ast "high order function type"
+      "module Hello = { def hello : (Int -> Int) -> Int = \\f f 1 }"
+      (Module
+         {
+           name = "Hello";
+           bindings =
+             [
+               Def
+                 {
+                   name = "hello";
+                   ann =
+                     Some
+                       (Arrow
+                          {
+                            from =
+                              Arrow
+                                {
+                                  from = Const { name = "Int" };
+                                  to_ = Const { name = "Int" };
+                                };
+                            to_ = Const { name = "Int" };
+                          });
+                   expr =
+                     Lam
+                       {
+                         param = "f";
+                         param_t = None;
+                         body =
+                           App
+                             {
+                               func = Var { name = "f" };
+                               arg = Int { value = 1 };
+                             };
+                       };
+                 };
+             ];
+         });
   ]
 
 let suite = "Parser" >::: cst_tests @ ast_tests
