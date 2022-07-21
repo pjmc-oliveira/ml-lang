@@ -130,6 +130,19 @@ let suite =
                def main = fact 5
              }"
            (Int 120);
+         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+           "recursive let-binding"
+           "module Hello = {
+                def main =
+                 let fact : Int -> Int = \\x
+                   if eq 0 x then
+                     1
+                   else
+                     mul x (fact (sub x 1))
+                 in
+                   fact 5
+              }"
+           (Int 120);
          (* Failure *)
          test_failure "local scope"
            "module Hello = { def foo = let x = 1 in x def main = x }"

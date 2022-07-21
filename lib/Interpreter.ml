@@ -27,6 +27,8 @@ let define name value ctx = TmCtx.insert name value ctx
 let defer (expr : Tast.expr) (ctx : tm_ctx) : Value.t =
   Value.Thunk { ctx; expr }
 
+let fix name expr ctx = Value.Fix { ctx; name; expr }
+
 let rec eval (e : Tast.expr) (ctx : tm_ctx) : (Value.t, Error.t) result =
   let open Result.Syntax in
   match e with
@@ -34,9 +36,8 @@ let rec eval (e : Tast.expr) (ctx : tm_ctx) : (Value.t, Error.t) result =
   | Bool { value; _ } -> Ok (Value.Bool value)
   | Var { name; span; _ } -> lookup span name ctx
   | Let { name; def; body; _ } ->
-      (* TODO: Recursive let-bindings *)
-      let def = defer def ctx in
-      let ctx' = define name def ctx in
+      let fixpoint = fix name def ctx in
+      let ctx' = define name fixpoint ctx in
       eval body ctx'
   | If { cond; con; alt; _ } -> (
       let* cond = eval cond ctx in
@@ -93,7 +94,7 @@ let defer_binding (b : Tast.binding) (ctx : tm_ctx) :
     (Value.t * tm_ctx, Error.t list) result =
   match b with
   | Def { name; expr; _ } ->
-      let fixpoint = Value.Fix { ctx; name; expr } in
+      let fixpoint = fix name expr ctx in
       let ctx' = define name fixpoint ctx in
       Ok (fixpoint, ctx')
 

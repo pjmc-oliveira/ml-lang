@@ -164,6 +164,7 @@ let ast_tests =
                            Let
                              {
                                name = "x";
+                               def_t = None;
                                def = Bool { value = true };
                                body = Var { name = "x" };
                              };
@@ -199,6 +200,7 @@ let ast_tests =
                      Let
                        {
                          name = "x";
+                         def_t = None;
                          def = Int { value = 1 };
                          body = Var { name = "x" };
                        };
@@ -368,6 +370,43 @@ let ast_tests =
                  };
              ];
          });
+    test_parser_ast "top level type annotation"
+      "module Hello = { def hello = let x : Bool = True in x }"
+      (Module
+         {
+           name = "Hello";
+           bindings =
+             [
+               Def
+                 {
+                   name = "hello";
+                   ann = None;
+                   expr =
+                     Let
+                       {
+                         name = "x";
+                         def_t = Some (Const { name = "Bool" });
+                         def = Bool { value = true };
+                         body = Var { name = "x" };
+                       };
+                 };
+             ];
+         });
+    (* test_parser_ast "multi-parameter lambda"
+       "module Hello = { def const : Int -> Int -> Int = \\x \\y x }"
+       (Module
+          {
+            name = "Hello";
+            bindings =
+              [
+                Def
+                  {
+                    name = "hello";
+                    ann = Some (Const { name = "Bool" });
+                    expr = Bool { value = true };
+                  };
+              ];
+          }); *)
     test_parser_ast "high order function type"
       "module Hello = { def hello : (Int -> Int) -> Int = \\f f 1 }"
       (Module

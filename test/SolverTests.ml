@@ -151,6 +151,21 @@ let suite =
                         } );
                     ("main", Type.Int);
                   ]));
+         test_solver ~initial_ctx:BuiltIns.ty_ctx "recursive let binding"
+           "module Hello = {
+               def main =
+                 let fact : Int -> Int = \\x
+                   if eq 0 x then
+                     1
+                   else
+                     mul x (fact (sub x 1))
+                 in
+                   fact
+             }"
+           TyCtx.(
+             union BuiltIns.ty_ctx
+               (of_list
+                  [ ("main", Type.Arrow { from = Type.Int; to_ = Type.Int }) ]));
          (* Failures *)
          test_failure "let expression out-of-scope"
            "module Hello = { def foo = let x = 1 in x def main = x }"

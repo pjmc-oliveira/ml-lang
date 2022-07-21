@@ -22,7 +22,13 @@ module Expr = struct
     | Int of { value : int; span : Source.Span.t }
     | Bool of { value : bool; span : Source.Span.t }
     | Var of { name : string; span : Source.Span.t }
-    | Let of { name : string; def : t; body : t; span : Source.Span.t }
+    | Let of {
+        name : string;
+        def_t : Type.t option;
+        def : t;
+        body : t;
+        span : Source.Span.t;
+      }
     | If of { cond : t; con : t; alt : t; span : Source.Span.t }
     | Lam of {
         param : string;
@@ -39,10 +45,11 @@ module Expr = struct
     | Int { value; _ } -> Int { value }
     | Bool { value; _ } -> Bool { value }
     | Var { name; _ } -> Var { name }
-    | Let { name; def; body; _ } ->
+    | Let { name; def_t; def; body; _ } ->
+        let def_t = Option.map Type.to_ast def_t in
         let def = to_ast def in
         let body = to_ast body in
-        Let { name; def; body }
+        Let { name; def_t; def; body }
     | If { cond; con; alt; _ } ->
         let cond = to_ast cond in
         let con = to_ast con in
@@ -65,7 +72,8 @@ module Expr = struct
     | Int { value; span } -> Int { value; span = f span }
     | Bool { value; span } -> Bool { value; span = f span }
     | Var { name; span } -> Var { name; span = f span }
-    | Let { name; def; body; span } -> Let { name; def; body; span = f span }
+    | Let { name; def_t; def; body; span } ->
+        Let { name; def_t; def; body; span = f span }
     | If { cond; con; alt; span } -> If { cond; con; alt; span = f span }
     | Lam { param; param_t; body; span } ->
         Lam { param; param_t; body; span = f span }

@@ -217,11 +217,12 @@ and let_in () =
   with_span
     (let* _ = accept Let in
      let* name = identifier in
+     let* def_t = optional (accept Colon *> type_ ()) in
      let* _ = expect Equal in
      let* def = expression () in
      let* _ = expect In in
      let* body = expression () in
-     pure (fun span -> Cst.Expr.Let { name; def; body; span }))
+     pure (fun span -> Cst.Expr.Let { name; def_t; def; body; span }))
 
 and it_then_else () =
   with_span

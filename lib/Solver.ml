@@ -73,8 +73,8 @@ let rec infer (e : Cst.expr) (ctx : ty_ctx) :
       match TyCtx.lookup name ctx with
       | Some type_ -> Ok (Tast.Expr.Var { name; span; type_ }, type_)
       | None -> Error (unbound_var name span))
-  | Let { name; def; body; span } ->
-      let* def, def_t = infer def ctx in
+  | Let { name; def_t; def; body; span } ->
+      let* def, def_t = infer_check_let name def def_t ctx in
       let ctx' = TyCtx.insert name def_t ctx in
       let* body, type_ = infer body ctx' in
       Ok (Tast.Expr.Let { name; def_t; def; body; span; type_ }, type_)
@@ -132,8 +132,8 @@ and check (e : Cst.expr) (expected_t : Type.t) (ctx : ty_ctx) :
           let* _ = assert_equal expected_t type_ in
           Ok (Tast.Expr.Var { name; span; type_ })
       | None -> Error (unbound_var name span))
-  | Let { name; def; body; span } ->
-      let* def, def_t = infer def ctx in
+  | Let { name; def_t; def; body; span } ->
+      let* def, def_t = infer_check_let name def def_t ctx in
       let ctx' = TyCtx.insert name def_t ctx in
       let* body = check body expected_t ctx' in
       Ok (Tast.Expr.Let { name; def_t; def; body; span; type_ = expected_t })
@@ -180,9 +180,16 @@ and check (e : Cst.expr) (expected_t : Type.t) (ctx : ty_ctx) :
       let* expr = check expr type_ ctx in
       Ok expr
 
-and infer_int value span =
-  let type_ = Type.Int in
-  Ok (Tast.Expr.Int { value; span; type_ }, type_)
+and infer_check_let (name : string) (expr : Cst.expr) (ty : Cst.type_ option)
+    (ctx : ty_ctx) : (Tast.expr * Type.t, Error.t) result =
+  let open Result.Syntax in
+  match ty with
+  | None -> infer expr ctx
+  | Some ty ->
+      let* ty = solve_type ty in
+      let ctx' = TyCtx.insert name ty ctx in
+      let* expr = check expr ty ctx' in
+      Ok (expr, ty)
 
 let binding (ctx : ty_ctx) (b : Cst.binding) :
     (Tast.binding * Type.t, Error.t) result =

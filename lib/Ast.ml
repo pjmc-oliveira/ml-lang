@@ -8,7 +8,7 @@ module Expr = struct
     | Int of { value : int }
     | Bool of { value : bool }
     | Var of { name : string }
-    | Let of { name : string; def : t; body : t }
+    | Let of { name : string; def_t : Type.t option; def : t; body : t }
     | If of { cond : t; con : t; alt : t }
     | Lam of { param : string; param_t : Type.t option; body : t }
     | App of { func : t; arg : t }
