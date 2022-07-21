@@ -71,6 +71,20 @@ module Combinator = struct
 
   open Syntax
 
+  module Infix = struct
+    let ( *> ) tx ty =
+      let* _ = tx in
+      let* y = ty in
+      pure y
+
+    let ( <* ) tx ty =
+      let* x = tx in
+      let* _ = ty in
+      pure x
+
+    let ( >>= ) = bind
+  end
+
   let try_ p : 'a t =
    fun s ->
     match p s with
@@ -166,13 +180,25 @@ end
 
 open Combinator
 open Combinator.Syntax
+open Combinator.Infix
 
 let toplevel =
   let* () = drop_until (fun t -> t = Def) in
   pure ()
 
-let type_ () : Cst.type_ t =
-  (* TODO: Arrow types *)
+let rec type_ () : Cst.type_ t =
+  with_span
+    (let* from = type_atom () in
+     one_of
+       (error [ Text "Expected type" ])
+       [
+         (let* to_ = accept Arrow *> type_atom () in
+          pure (fun span -> Cst.Type.Arrow { from; to_; span }));
+         pure (fun _ -> from);
+       ])
+
+and type_atom () : Cst.type_ t =
+  (* TODO: Parens *)
   let* name, span = span_of identifier in
   pure (Cst.Type.Const { name; span })
 
@@ -205,12 +231,9 @@ and lambda () =
   with_span
     (let* _ = accept BackSlash in
      let* param = identifier in
-     let* _ = expect Colon in
-     let* param_t = type_ () in
-     let* _ = expect Dot in
+     let* param_t = optional (accept Colon *> type_ () <* expect Dot) in
      let* body = expression () in
-     pure (fun span ->
-         Cst.Expr.Lam { param; param_t = Some param_t; body; span }))
+     pure (fun span -> Cst.Expr.Lam { param; param_t; body; span }))
 
 and annotation () =
   with_span
@@ -218,8 +241,7 @@ and annotation () =
      one_of
        (error [ Text "Expected annotation" ])
        [
-         (let* _ = accept Colon in
-          let* ann = type_ () in
+         (let* ann = accept Colon *> type_ () in
           pure (fun span -> Cst.Expr.Ann { expr; ann; span }));
          pure (fun _ -> expr);
        ])

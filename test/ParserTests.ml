@@ -212,7 +212,7 @@ let ast_tests =
                  };
              ];
          });
-    test_parser_ast "lambda expression"
+    test_parser_ast "lambda expression with annotated parameter"
       "module Hello = { def hello = \\x : Int. x }"
       (Module
          {
@@ -228,6 +228,55 @@ let ast_tests =
                          param = "x";
                          param_t = Some (Const { name = "Int" });
                          body = Var { name = "x" };
+                       };
+                 };
+             ];
+         });
+    test_parser_ast "lambda expression" "module Hello = { def hello = \\x x }"
+      (Module
+         {
+           name = "Hello";
+           bindings =
+             [
+               Def
+                 {
+                   name = "hello";
+                   expr =
+                     Lam
+                       {
+                         param = "x";
+                         param_t = None;
+                         body = Var { name = "x" };
+                       };
+                 };
+             ];
+         });
+    test_parser_ast "lambda expression annotated as a whole"
+      "module Hello = { def hello = (\\x x) : Int -> Int }"
+      (Module
+         {
+           name = "Hello";
+           bindings =
+             [
+               Def
+                 {
+                   name = "hello";
+                   expr =
+                     Ann
+                       {
+                         expr =
+                           Lam
+                             {
+                               param = "x";
+                               param_t = None;
+                               body = Var { name = "x" };
+                             };
+                         ann =
+                           Arrow
+                             {
+                               from = Const { name = "Int" };
+                               to_ = Const { name = "Int" };
+                             };
                        };
                  };
              ];
