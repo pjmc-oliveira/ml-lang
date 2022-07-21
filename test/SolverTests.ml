@@ -119,6 +119,20 @@ let suite =
                 ("identity", Type.Arrow { from = Type.Int; to_ = Type.Int });
                 ("hello", Type.Int);
               ]);
+         test_solver "can solve higher order function"
+           "module Hello = {
+              def hello : (Int -> Int) -> Int = \\f
+                f 1
+            }"
+           (TyCtx.of_list
+              [
+                ( "hello",
+                  Type.Arrow
+                    {
+                      from = Type.Arrow { from = Type.Int; to_ = Type.Int };
+                      to_ = Type.Int;
+                    } );
+              ]);
          test_solver ~initial_ctx:BuiltIns.ty_ctx "built-in functions"
            "module Hello = {
               def my_add = \\x : Int. \\y : Int.

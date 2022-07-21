@@ -101,6 +101,15 @@ let suite =
             }"
            (Int 1);
          test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+           "higher order function"
+           "module Hello = {
+              def hello : (Int -> Int) -> Int = \\f
+                f 1
+              def identity : Int -> Int = \\x add x 1
+              def main = hello identity
+            }"
+           (Int 2);
+         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
            "built-in functions"
            "module Hello = {
               def my_add = \\x : Int. \\y : Int.
