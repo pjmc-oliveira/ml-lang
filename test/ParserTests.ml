@@ -392,21 +392,44 @@ let ast_tests =
                  };
              ];
          });
-    (* test_parser_ast "multi-parameter lambda"
-       "module Hello = { def const : Int -> Int -> Int = \\x \\y x }"
-       (Module
-          {
-            name = "Hello";
-            bindings =
-              [
-                Def
-                  {
-                    name = "hello";
-                    ann = Some (Const { name = "Bool" });
-                    expr = Bool { value = true };
-                  };
-              ];
-          }); *)
+    test_parser_ast "multi-parameter lambda"
+      "module Hello = { def const : Int -> Int -> Int = \\x \\y x }"
+      (Module
+         {
+           name = "Hello";
+           bindings =
+             [
+               Def
+                 {
+                   name = "const";
+                   ann =
+                     Some
+                       (Arrow
+                          {
+                            from = Const { name = "Int" };
+                            to_ =
+                              Arrow
+                                {
+                                  from = Const { name = "Int" };
+                                  to_ = Const { name = "Int" };
+                                };
+                          });
+                   expr =
+                     Lam
+                       {
+                         param = "x";
+                         param_t = None;
+                         body =
+                           Lam
+                             {
+                               param = "y";
+                               param_t = None;
+                               body = Var { name = "x" };
+                             };
+                       };
+                 };
+             ];
+         });
     test_parser_ast "high order function type"
       "module Hello = { def hello : (Int -> Int) -> Int = \\f f 1 }"
       (Module

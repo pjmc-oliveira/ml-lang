@@ -192,7 +192,7 @@ let rec type_ () : Cst.type_ t =
      one_of
        (error [ Text "Expected type" ])
        [
-         (let* to_ = accept Arrow *> type_atom () in
+         (let* to_ = accept Arrow *> type_ () in
           pure (fun span -> Cst.Type.Arrow { from; to_; span }));
          pure (fun _ -> from);
        ])
