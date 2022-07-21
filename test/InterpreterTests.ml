@@ -143,6 +143,29 @@ let suite =
                    fact 5
               }"
            (Int 120);
+         (let tm_ctx =
+            TmCtx.union BuiltIns.tm_ctx
+              (TmCtx.of_list
+                 [
+                   ( "exit",
+                     Value.(
+                       lift (fun x ->
+                           let x = get_int x in
+                           failwith ("Failed with: " ^ string_of_int x))) );
+                 ])
+          in
+          let ty_ctx =
+            TyCtx.union BuiltIns.ty_ctx
+              (TyCtx.of_list [ ("exit", Type.Arrow { from = Int; to_ = Int }) ])
+          in
+          test_interpreter ~tm_ctx ~ty_ctx "non-strict function application"
+            "module Hello = {
+                def const : Int -> Int -> Int = \\x \\y
+                  x
+
+                def main = const 1 (exit 2)
+              }"
+            (Int 1));
          (* Failure *)
          test_failure "local scope"
            "module Hello = { def foo = let x = 1 in x def main = x }"
