@@ -18,7 +18,8 @@ type t =
   | Arrow
   | Dot
   (* Literals *)
-  | Ident of string
+  | LowerIdent of string
+  | UpperIdent of string
   | Int of int
   | Bool of bool
 [@@deriving show]
@@ -43,7 +44,8 @@ let to_string = function
   | Arrow -> "->"
   | Dot -> "."
   (* Literals *)
-  | Ident s -> s
+  | LowerIdent s -> s
+  | UpperIdent s -> s
   | Int n -> string_of_int n
   | Bool true -> "True"
   | Bool false -> "False"

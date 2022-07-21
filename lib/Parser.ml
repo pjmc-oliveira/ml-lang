@@ -166,15 +166,28 @@ module Combinator = struct
 
   let accept expected = try_ (expect expected)
 
-  let identifier =
+  let lower_identifier =
     let* tk = token in
     match tk with
-    | Ident s -> pure s
+    | LowerIdent s -> pure s
     | _ ->
         let* pos = last_position in
         fail_lines ~location:pos
           [
-            Text "Expected identifier"; Text ("But got: " ^ Token.to_string tk);
+            Text "Expected lower identifier";
+            Text ("But got: " ^ Token.to_string tk);
+          ]
+
+  let upper_identifier =
+    let* tk = token in
+    match tk with
+    | UpperIdent s -> pure s
+    | _ ->
+        let* pos = last_position in
+        fail_lines ~location:pos
+          [
+            Text "Expected upper identifier";
+            Text ("But got: " ^ Token.to_string tk);
           ]
 end
 
@@ -201,7 +214,7 @@ and type_atom () : Cst.type_ t =
   with_span
     (let* tk = token in
      match tk with
-     | Ident name -> pure (fun span -> Cst.Type.Const { name; span })
+     | UpperIdent name -> pure (fun span -> Cst.Type.Const { name; span })
      | LeftParen ->
          let* expr = type_ () in
          let* _ = expect RightParen in
@@ -216,7 +229,7 @@ let rec expression () : Cst.expr t =
 and let_in () =
   with_span
     (let* _ = accept Let in
-     let* name = identifier in
+     let* name = lower_identifier in
      let* def_t = optional (accept Colon *> type_ ()) in
      let* _ = expect Equal in
      let* def = expression () in
@@ -237,7 +250,7 @@ and it_then_else () =
 and lambda () =
   with_span
     (let* _ = accept BackSlash in
-     let* param = identifier in
+     let* param = lower_identifier in
      let* param_t = optional (accept Colon *> type_ () <* expect Dot) in
      let* body = expression () in
      pure (fun span -> Cst.Expr.Lam { param; param_t; body; span }))
@@ -273,7 +286,7 @@ and atom () =
      match tk with
      | Int value -> pure (fun span -> Cst.Expr.Int { value; span })
      | Bool value -> pure (fun span -> Cst.Expr.Bool { value; span })
-     | Ident name -> pure (fun span -> Cst.Expr.Var { name; span })
+     | LowerIdent name -> pure (fun span -> Cst.Expr.Var { name; span })
      | LeftParen ->
          let* expr = expression () in
          let* _ = expect RightParen in
@@ -282,7 +295,7 @@ and atom () =
 
 let def =
   let* () = accept Def in
-  let* name = identifier in
+  let* name = lower_identifier in
   let* ann = optional (accept Colon *> type_ ()) in
   let* () = expect Equal in
   let* expr = expression () in
@@ -295,7 +308,7 @@ let binding =
 let module_ =
   let parse_module =
     let* () = accept Module in
-    let* name = identifier in
+    let* name = upper_identifier in
     let* () = expect Equal in
     let* () = expect LeftBrace in
     let* bindings = accumulate binding ~recover:toplevel in

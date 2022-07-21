@@ -41,13 +41,21 @@ let token src : (Token.t * Source.span * Source.t, Error.t) result =
               let str = String.make 1 c in
               let location = Source.between src src' in
               fail [ Text "Unexpected character: "; Code (str, location) ])
-      | _ when Char.is_alpha c -> (
+      | _ when Char.is_alpha_upper c -> (
           let name, src'' =
             Source.take_while (fun c -> Char.is_alphanum c || c = '_') src
           in
           let span = Source.between src src'' in
           match StrMap.find_opt name keywords with
-          | None -> Ok (Ident name, span, src'')
+          | None -> Ok (UpperIdent name, span, src'')
+          | Some kw -> Ok (kw, span, src''))
+      | _ when Char.is_alpha_lower c -> (
+          let name, src'' =
+            Source.take_while (fun c -> Char.is_alphanum c || c = '_') src
+          in
+          let span = Source.between src src'' in
+          match StrMap.find_opt name keywords with
+          | None -> Ok (LowerIdent name, span, src'')
           | Some kw -> Ok (kw, span, src''))
       | _ when Char.is_digit c ->
           let digits, src'' = Source.take_while Char.is_alphanum src in
