@@ -87,6 +87,12 @@ let suite =
               def main = identity (identity 1)
             }"
            (Int 1);
+         test_interpreter "lambda expression annotated as a whole"
+           "module Hello = {
+              def identity = (\\x x) : Int -> Int
+              def main = (identity 2)
+            }"
+           (Int 2);
          test_interpreter "different nested function application"
            "module Hello = {
               def id1 = \\x : Int. x

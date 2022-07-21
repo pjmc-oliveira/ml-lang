@@ -85,6 +85,10 @@ let suite =
            "module Hello = { def hello = \\x : Int. True }"
            (TyCtx.of_list
               [ ("hello", Type.Arrow { from = Type.Int; to_ = Type.Bool }) ]);
+         test_solver "lambda expression annotated as a whole"
+           "module Hello = { def hello = (\\x x) : Int -> Int }"
+           (TyCtx.of_list
+              [ ("hello", Type.Arrow { from = Type.Int; to_ = Type.Int }) ]);
          test_solver "annotatated expression"
            "module Hello = { def hello = 1 : Int }"
            (TyCtx.of_list [ ("hello", Type.Int) ]);
