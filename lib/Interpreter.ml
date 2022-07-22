@@ -1,3 +1,4 @@
+open Extensions
 module TmCtx = Ctx.Make (String)
 
 type tm_ctx = Value.t TmCtx.t

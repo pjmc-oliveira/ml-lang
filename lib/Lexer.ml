@@ -1,3 +1,5 @@
+open Extensions
+
 let fail ?location lines : ('a, Error.t) result =
   Error { kind = Lexer; lines; location }
 

@@ -1,5 +1,6 @@
 open OUnit2
 open Ml_lang
+open Extensions
 open Result.Syntax
 
 let parse_module str =

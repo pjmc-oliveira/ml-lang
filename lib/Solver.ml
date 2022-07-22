@@ -1,3 +1,4 @@
+open Extensions
 module TyCtx = Ctx.Make (String)
 
 type ty_ctx = Type.t TyCtx.t

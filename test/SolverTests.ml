@@ -1,5 +1,6 @@
 open OUnit2
 open Ml_lang
+open Extensions
 open Result.Syntax
 module TyCtx = Solver.TyCtx
 
