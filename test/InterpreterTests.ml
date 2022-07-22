@@ -144,6 +144,17 @@ let suite =
                    fact 5
               }"
            (Int 120);
+         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+           "top-level polymorphic function"
+           "module Hello = {
+              def identity = \\x x
+              def main =
+                if identity True then
+                  1
+                else
+                  2
+            }"
+           (Int 1);
          (let tm_ctx =
             TmCtx.union BuiltIns.tm_ctx
               (TmCtx.of_list

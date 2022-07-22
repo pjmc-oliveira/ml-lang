@@ -116,6 +116,60 @@ let suite =
             }"
            (TyCtx.of_list [ ("hello", Type.Bool) ]);
          (* TODO: polymorphic functions *)
+         test_solver "infer top-level polymorphic function"
+           "module Hello = {
+              def identity = \\x x
+            }"
+           (TyCtx.of_list
+              [
+                ( "identity",
+                  Type.Forall
+                    {
+                      ty_vars = [ "t0" ];
+                      type_ =
+                        Type.Arrow { from = Type.Var "t0"; to_ = Type.Var "t0" };
+                    } );
+              ]);
+         test_solver "apply polymorphic function"
+           "module Hello = {
+              def identity = \\x x
+              def main =
+                if identity True then
+                  1
+                else
+                  2
+            }"
+           (TyCtx.of_list
+              [
+                ( "identity",
+                  Type.Forall
+                    {
+                      ty_vars = [ "t0" ];
+                      type_ =
+                        Type.Arrow { from = Type.Var "t0"; to_ = Type.Var "t0" };
+                    } );
+                ("main", Type.Int);
+              ]);
+         test_solver "apply annotated polymorphic function"
+           "module Hello = {
+              def identity : forall a. a -> a = \\x x
+              def main =
+                if identity True then
+                  1
+                else
+                  2
+            }"
+           (TyCtx.of_list
+              [
+                ( "identity",
+                  Type.Forall
+                    {
+                      ty_vars = [ "a" ];
+                      type_ =
+                        Type.Arrow { from = Type.Var "a"; to_ = Type.Var "a" };
+                    } );
+                ("main", Type.Int);
+              ]);
          (* TODO: fresh variable should not mix with explicitly annotated type variables *)
          test_solver "nested function application"
            "module Hello = {

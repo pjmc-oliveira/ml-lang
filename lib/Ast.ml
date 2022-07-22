@@ -1,4 +1,8 @@
-type ty = Const of { name : string } | Arrow of { from : ty; to_ : ty }
+type ty =
+  | Const of { name : string }
+  | Var of { name : string }
+  | Arrow of { from : ty; to_ : ty }
+  | Forall of { ty_vars : string list; type_ : ty }
 [@@deriving show]
 
 type expr =

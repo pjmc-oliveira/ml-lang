@@ -7,6 +7,7 @@ type t =
   | If
   | Then
   | Else
+  | Forall
   (* Symbols *)
   | Equal
   | LeftBrace
@@ -33,6 +34,7 @@ let to_string = function
   | If -> "if"
   | Then -> "then"
   | Else -> "else"
+  | Forall -> "forall"
   (* Symbols *)
   | Equal -> "="
   | LeftBrace -> "{"

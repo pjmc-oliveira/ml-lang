@@ -119,6 +119,11 @@ module Combinator = struct
     | [], _ -> (Unconsumed, Error [ error [ Text "Unexpected EOF" ] ])
     | (tk, loc) :: tks, _ -> (Consumed, Ok (tk, (tks, Some loc)))
 
+  let peek : Token.t option t = function
+    | [], _ -> (Unconsumed, Ok (None, ([], None)))
+    | (tk, loc) :: tks, _ ->
+        (Consumed, Ok (Some tk, ((tk, loc) :: tks, Some loc)))
+
   let next_position : Source.span t =
    fun tks ->
     match tks with
@@ -215,11 +220,23 @@ let rec type_ () : ty t =
          pure (fun _ -> from);
        ])
 
+and type_scheme () : ty t =
+  with_span
+    (let* ty_vars =
+       optional (accept Forall *> some lower_identifier <* expect Dot)
+     in
+     let* ty = type_ () in
+     match ty_vars with
+     | None -> pure (fun _ -> ty)
+     | Some ty_vars ->
+         pure (fun span -> Cst.Type.Forall { ty_vars; type_ = ty; span }))
+
 and type_atom () : ty t =
   with_span
     (let* tk = token in
      match tk with
      | UpperIdent name -> pure (fun span -> Cst.Type.Const { name; span })
+     | LowerIdent name -> pure (fun span -> Cst.Type.Var { name; span })
      | LeftParen ->
          let* expr = type_ () in
          let* _ = expect RightParen in
@@ -301,7 +318,7 @@ and atom () : expr t =
 let def : (Source.span -> binding) t =
   let* () = accept Def in
   let* name = lower_identifier in
-  let* ann = optional (accept Colon *> type_ ()) in
+  let* ann = optional (accept Colon *> type_scheme ()) in
   let* () = expect Equal in
   let* expr = expression () in
   pure (fun span -> Cst.Binding.Def { name; ann; expr; span })

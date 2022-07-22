@@ -371,7 +371,53 @@ let ast_tests =
                  };
              ];
          });
-    test_parser_ast "top level type annotation"
+    test_parser_ast "top level polymorphic type"
+      "module Hello = {
+        def const : forall a b. a -> b -> a
+          = \\x \\y x
+      }"
+      (Module
+         {
+           name = "Hello";
+           bindings =
+             [
+               Def
+                 {
+                   name = "const";
+                   ann =
+                     Some
+                       (Forall
+                          {
+                            ty_vars = [ "a"; "b" ];
+                            type_ =
+                              Arrow
+                                {
+                                  from = Var { name = "a" };
+                                  to_ =
+                                    Arrow
+                                      {
+                                        from = Var { name = "b" };
+                                        to_ = Var { name = "a" };
+                                      };
+                                };
+                          });
+                   expr =
+                     Lam
+                       {
+                         param = "x";
+                         param_t = None;
+                         body =
+                           Lam
+                             {
+                               param = "y";
+                               param_t = None;
+                               body = Var { name = "x" };
+                             };
+                       };
+                 };
+             ];
+         });
+    test_parser_ast "let-binding type annotation"
       "module Hello = { def hello = let x : Bool = True in x }"
       (Module
          {

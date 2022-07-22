@@ -14,6 +14,7 @@ let keywords =
     ("if", If);
     ("then", Then);
     ("else", Else);
+    ("forall", Forall);
     ("True", Bool true);
     ("False", Bool false);
   ]

@@ -1,20 +1,29 @@
 module Type = struct
   type 'a t =
     | Const of { name : string; span : 'a }
+    | Var of { name : string; span : 'a }
     | Arrow of { from : 'a t; to_ : 'a t; span : 'a }
+    | Forall of { ty_vars : string list; type_ : 'a t; span : 'a }
   [@@deriving show]
 
   let rec to_ast e : Ast.ty =
     match e with
     | Const { name; _ } -> Const { name }
+    | Var { name; _ } -> Var { name }
     | Arrow { from; to_; _ } ->
         let from = to_ast from in
         let to_ = to_ast to_ in
         Arrow { from; to_ }
+    | Forall { ty_vars; type_; _ } ->
+        let type_ = to_ast type_ in
+        Forall { ty_vars; type_ }
 
   let map f = function
     | Const { name; span } -> Const { name; span = f span }
+    | Var { name; span } -> Var { name; span = f span }
     | Arrow { from; to_; span } -> Arrow { from; to_; span = f span }
+    | Forall { ty_vars; type_; span } ->
+        Forall { ty_vars; type_; span = f span }
 end
 
 module Expr = struct

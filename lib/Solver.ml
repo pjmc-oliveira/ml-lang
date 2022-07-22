@@ -1,5 +1,6 @@
 open Extensions
 module TyCtx = Ctx.Make (String)
+module StrSet = Set.Make (String)
 
 type ty_ctx = Type.t TyCtx.t
 type ty = Source.span Cst.ty
@@ -50,17 +51,47 @@ let if_condition_not_bool cond_t span : Error.t =
       Text ("But got type: " ^ Type.show cond_t);
     ]
 
-let assert_equal ?span exprected_t actual_t : (unit, Error.t) t =
-  if exprected_t = actual_t then
-    pure ()
-  else
-    fail
-      (error ?span
-         [
-           Text "Type mismatch";
-           Text ("Expected: " ^ Type.show exprected_t);
-           Text ("But got: " ^ Type.show actual_t);
-         ])
+let rec apply_subst (old : string) (new_ : Type.t) (ty : Type.t) : Type.t =
+  match ty with
+  | Var name when name = old -> new_
+  | Int | Bool | Var _ -> ty
+  | Arrow { from; to_ } ->
+      let from = apply_subst old new_ from in
+      let to_ = apply_subst old new_ to_ in
+      Arrow { from; to_ }
+  | Forall _ -> failwith "TODO"
+
+let rec compare_type (ty : Type.t) (ty' : Type.t) =
+  match (ty, ty') with
+  | _, _ when ty = ty' -> true
+  | Arrow { from; to_ }, Arrow { from = from'; to_ = to' } ->
+      compare_type from from' && compare_type to_ to'
+  | Forall { ty_vars; type_ }, Forall { ty_vars = ty_vars'; type_ = type' } ->
+      let zipped = List.zip ty_vars ty_vars' in
+      if List.length ty_vars = List.length ty_vars' then
+        let s : subst = List.map (fun (v, v') -> (v', Type.Var v)) zipped in
+        let type_ =
+          List.fold_right (fun (name, new_) -> apply_subst name new_) s type_
+        in
+        compare_type type_ type'
+      else
+        false
+  | _, _ -> false
+
+let assert_equal ?span exprected_t actual_t : (constraints, Error.t) t =
+  let err =
+    error ?span
+      [
+        Text "Type mismatch";
+        Text ("Expected: " ^ Type.show exprected_t);
+        Text ("But got: " ^ Type.show actual_t);
+      ]
+  in
+  match (exprected_t, actual_t) with
+  | _, _ when compare_type exprected_t actual_t -> pure []
+  (* Type variables may be equal to each once they are instantiated *)
+  | Type.Var _, _ | _, Type.Var _ -> pure [ (exprected_t, actual_t, Some err) ]
+  | _, _ -> fail err
 
 let rec solve_type (ty : ty) : (Type.t, Error.t) t =
   match ty with
@@ -69,10 +100,14 @@ let rec solve_type (ty : ty) : (Type.t, Error.t) t =
       | "Int" -> pure Type.Int
       | "Bool" -> pure Type.Bool
       | _ -> fail (error [ Text ("Unbound type: " ^ name) ]))
+  | Var { name; _ } -> pure (Type.Var name)
   | Arrow { from; to_; _ } ->
       let* from = solve_type from in
       let* to_ = solve_type to_ in
       pure (Type.Arrow { from; to_ })
+  | Forall { ty_vars; type_; _ } ->
+      let* type_ = solve_type type_ in
+      pure (Type.Forall { ty_vars; type_ })
 
 let rec occurs_check (name : string) (ty : Type.t) : (unit, Error.t) t =
   match ty with
@@ -83,15 +118,7 @@ let rec occurs_check (name : string) (ty : Type.t) : (unit, Error.t) t =
       let* _ = occurs_check name from in
       let* _ = occurs_check name to_ in
       pure ()
-
-let rec apply_subst (old : string) (new_ : Type.t) (ty : Type.t) : Type.t =
-  match ty with
-  | Var name when name = old -> new_
-  | Int | Bool | Var _ -> ty
-  | Arrow { from; to_ } ->
-      let from = apply_subst old new_ from in
-      let to_ = apply_subst old new_ to_ in
-      Arrow { from; to_ }
+  | Forall _ -> failwith "TODO occurs_check Forall"
 
 let apply_subst_to_constraints (name : string) (ty : Type.t) (cs : constraints)
     : constraints =
@@ -108,7 +135,26 @@ let rec apply_subst (ss : subst) (ty : Type.t) : Type.t =
       | Arrow { from; to_ } ->
           let from = apply_subst ss from in
           let to_ = apply_subst ss to_ in
-          apply_subst ss' (Arrow { from; to_ }))
+          apply_subst ss' (Arrow { from; to_ })
+      | Forall _ -> failwith "TODO apply_subst")
+
+let rec free_ty_vars (ty : Type.t) : StrSet.t =
+  match ty with
+  | Type.Int | Type.Bool -> StrSet.empty
+  | Type.Var name -> StrSet.singleton name
+  | Type.Arrow { from; to_ } ->
+      let from = free_ty_vars from in
+      let to_ = free_ty_vars to_ in
+      StrSet.union from to_
+  | Type.Forall { ty_vars; type_ } ->
+      let type_ = free_ty_vars type_ in
+      List.fold_right StrSet.remove ty_vars type_
+
+let generalize (type_ : Type.t) : Type.t =
+  let ty_vars = List.of_seq (StrSet.to_seq (free_ty_vars type_)) in
+  match ty_vars with
+  | [] -> type_
+  | _ -> Type.Forall { ty_vars; type_ }
 
 let rec solve_constraints (cs : constraints) : (subst, Error.t) t =
   match cs with
@@ -206,6 +252,14 @@ let rec infer (e : expr) (ctx : ty_ctx) :
                 ( Tast.Expr.App { func; arg; span; type_ },
                   type_,
                   ((arg_t, param_t, Some err) :: c1) @ c2 ))
+      | Forall
+          { ty_vars = _todo; type_ = Arrow { from = param_t; to_ = type_ } } ->
+          let* arg, arg_t, c2 = infer arg ctx in
+          let err = wrong_arg_type param_t arg_t span in
+          pure
+            ( Tast.Expr.App { func; arg; span; type_ },
+              type_,
+              ((param_t, arg_t, Some err) :: c1) @ c2 )
       | _ -> fail (expr_not_a_function func span))
   | Ann { expr; ann; _ } ->
       let* type_ = solve_type ann in
@@ -253,14 +307,34 @@ and check (e : expr) (expected_t : Type.t) (ctx : ty_ctx) :
           match param_t with
           | Some param_t ->
               let* param_t = solve_type param_t in
-              let* _ = assert_equal from param_t in
+              let* c1 = assert_equal from param_t in
               let ctx' = TyCtx.insert param param_t ctx in
-              let* body, c1 = check body to_ ctx' in
+              let* body, c2 = check body to_ ctx' in
               pure
                 ( Tast.Expr.Lam
                     { param; param_t; body; span; type_ = expected_t },
-                  c1 )
+                  c1 @ c2 )
           | None ->
+              let ctx' = TyCtx.insert param from ctx in
+              let* body, c1 = check body to_ ctx' in
+              pure
+                ( Tast.Expr.Lam
+                    { param; param_t = from; body; span; type_ = expected_t },
+                  c1 ))
+      | Forall { type_ = Arrow { from; to_ }; _ } -> (
+          match param_t with
+          | Some param_t ->
+              let* param_t = solve_type param_t in
+              let* c1 = assert_equal from param_t in
+              let ctx' = TyCtx.insert param param_t ctx in
+              let* body, c2 = check body to_ ctx' in
+              pure
+                ( Tast.Expr.Lam
+                    { param; param_t = from; body; span; type_ = expected_t },
+                  ((from, param_t, None) :: (to_, expected_t, None) :: c1) @ c2
+                )
+          | None ->
+              (* TODO: is this right? *)
               let ctx' = TyCtx.insert param from ctx in
               let* body, c1 = check body to_ ctx' in
               pure
@@ -270,8 +344,11 @@ and check (e : expr) (expected_t : Type.t) (ctx : ty_ctx) :
       | _ ->
           (* TODO: Better error message? This will always fail... *)
           let* expr, actual_t, c1 = infer e ctx in
-          let* _ = assert_equal expected_t actual_t in
-          pure (expr, c1))
+          let* c2 =
+            print_endline "check lam not arrow";
+            assert_equal expected_t actual_t
+          in
+          pure (expr, c1 @ c2))
   | App { func; arg; span } ->
       let* arg, arg_t, c1 = infer arg ctx in
       let* func, c2 =
@@ -308,6 +385,7 @@ let binding (ctx : ty_ctx) (b : binding) :
           let* expr, type_, c1 = infer expr ctx in
           let* s = solve_constraints c1 in
           let type_ = apply_subst s type_ in
+          let type_ = generalize type_ in
           pure (Tast.Binding.Def { name; expr; span; type_ }, type_))
 
 let rec multiple_passes (previous : int) (bindings : binding list)
