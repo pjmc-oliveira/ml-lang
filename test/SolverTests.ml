@@ -110,6 +110,13 @@ let suite =
                 ("identity", Type.Arrow { from = Type.Int; to_ = Type.Int });
                 ("hello", Type.Int);
               ]);
+         test_solver "infer function application"
+           "module Hello = {
+              def hello = (\\x \\y x) True 0
+            }"
+           (TyCtx.of_list [ ("hello", Type.Bool) ]);
+         (* TODO: polymorphic functions *)
+         (* TODO: fresh variable should not mix with explicitly annotated type variables *)
          test_solver "nested function application"
            "module Hello = {
               def identity = \\x : Int. x

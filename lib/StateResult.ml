@@ -8,6 +8,12 @@ let map f p : ('b, 's, 'e) t =
   | Ok (x, s') -> Ok (f x, s')
   | Error e -> Error e
 
+let map_error f p : ('b, 's, 'e) t =
+ fun s ->
+  match p s with
+  | Ok (x, s') -> Ok (x, s')
+  | Error e -> Error (f e)
+
 let bind (p : ('a, 's, 'e) t) (f : 'a -> ('b, 's, 'e) t) : ('b, 's, 'e) t =
  fun s ->
   match p s with

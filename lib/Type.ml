@@ -1,1 +1,2 @@
-type t = Int | Bool | Arrow of { from : t; to_ : t } [@@deriving show]
+type t = Int | Bool | Var of string | Arrow of { from : t; to_ : t }
+[@@deriving show]
