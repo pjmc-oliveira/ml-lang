@@ -1,25 +1,25 @@
 module Expr = struct
-  type t =
-    | Int of { value : int; span : Source.Span.t; type_ : Type.t }
-    | Bool of { value : bool; span : Source.Span.t; type_ : Type.t }
-    | Var of { name : string; span : Source.Span.t; type_ : Type.t }
+  type 'a t =
+    | Int of { value : int; span : 'a; type_ : Type.t }
+    | Bool of { value : bool; span : 'a; type_ : Type.t }
+    | Var of { name : string; span : 'a; type_ : Type.t }
     | Let of {
         name : string;
-        def : t;
+        def : 'a t;
         def_t : Type.t;
-        body : t;
-        span : Source.Span.t;
+        body : 'a t;
+        span : 'a;
         type_ : Type.t;
       }
-    | If of { cond : t; con : t; alt : t; span : Source.Span.t; type_ : Type.t }
+    | If of { cond : 'a t; con : 'a t; alt : 'a t; span : 'a; type_ : Type.t }
     | Lam of {
         param : string;
         param_t : Type.t;
-        body : t;
-        span : Source.Span.t;
+        body : 'a t;
+        span : 'a;
         type_ : Type.t;
       }
-    | App of { func : t; arg : t; span : Source.Span.t; type_ : Type.t }
+    | App of { func : 'a t; arg : 'a t; span : 'a; type_ : Type.t }
   [@@deriving show]
 
   let rec to_string = function
@@ -45,26 +45,17 @@ module Expr = struct
 end
 
 module Binding = struct
-  type t =
-    | Def of {
-        name : string;
-        expr : Expr.t;
-        span : Source.Span.t;
-        type_ : Type.t;
-      }
+  type 'a t =
+    | Def of { name : string; expr : 'a Expr.t; span : 'a; type_ : Type.t }
   [@@deriving show]
 end
 
 module Module = struct
-  type t =
-    | Module of {
-        name : string;
-        bindings : Binding.t list;
-        span : Source.Span.t;
-      }
+  type 'a t =
+    | Module of { name : string; bindings : 'a Binding.t list; span : 'a }
   [@@deriving show]
 end
 
-type expr = Expr.t
-type binding = Binding.t
-type module_ = Module.t
+type 'a expr = 'a Expr.t
+type 'a binding = 'a Binding.t
+type 'a module_ = 'a Module.t

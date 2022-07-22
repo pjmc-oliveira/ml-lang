@@ -2,6 +2,10 @@ open Extensions
 module TyCtx = Ctx.Make (String)
 
 type ty_ctx = Type.t TyCtx.t
+type ty = Source.span Cst.ty
+type expr = Source.span Cst.expr
+type binding = Source.span Cst.binding
+type module_ = Source.span Cst.module_
 
 let error ?span lines : Error.t =
   { kind = Error.Kind.Solver; location = span; lines }
@@ -47,7 +51,7 @@ let assert_equal ?span exprected_t actual_t : (unit, Error.t) result =
            Text ("But got: " ^ Type.show actual_t);
          ])
 
-let rec solve_type (ty : Cst.Type.t) : (Type.t, Error.t) result =
+let rec solve_type (ty : ty) : (Type.t, Error.t) result =
   let open Result.Syntax in
   match ty with
   | Const { name; _ } -> (
@@ -60,8 +64,8 @@ let rec solve_type (ty : Cst.Type.t) : (Type.t, Error.t) result =
       let* to_ = solve_type to_ in
       Ok (Type.Arrow { from; to_ })
 
-let rec infer (e : Cst.expr) (ctx : ty_ctx) :
-    (Tast.expr * Type.t, Error.t) result =
+let rec infer (e : expr) (ctx : ty_ctx) :
+    (Source.span Tast.expr * Type.t, Error.t) result =
   let open Result.Syntax in
   match e with
   | Int { value; span } ->
@@ -117,8 +121,8 @@ let rec infer (e : Cst.expr) (ctx : ty_ctx) :
       let* expr = check expr type_ ctx in
       Ok (expr, type_)
 
-and check (e : Cst.expr) (expected_t : Type.t) (ctx : ty_ctx) :
-    (Tast.expr, Error.t) result =
+and check (e : expr) (expected_t : Type.t) (ctx : ty_ctx) :
+    (Source.span Tast.expr, Error.t) result =
   let open Result.Syntax in
   match e with
   | Int { value; span } ->
@@ -181,8 +185,8 @@ and check (e : Cst.expr) (expected_t : Type.t) (ctx : ty_ctx) :
       let* expr = check expr type_ ctx in
       Ok expr
 
-and infer_check_let (name : string) (expr : Cst.expr) (ty : Cst.type_ option)
-    (ctx : ty_ctx) : (Tast.expr * Type.t, Error.t) result =
+and infer_check_let (name : string) (expr : expr) (ty : ty option)
+    (ctx : ty_ctx) : (Source.span Tast.expr * Type.t, Error.t) result =
   let open Result.Syntax in
   match ty with
   | None -> infer expr ctx
@@ -192,8 +196,8 @@ and infer_check_let (name : string) (expr : Cst.expr) (ty : Cst.type_ option)
       let* expr = check expr ty ctx' in
       Ok (expr, ty)
 
-let binding (ctx : ty_ctx) (b : Cst.binding) :
-    (Tast.binding * Type.t, Error.t) result =
+let binding (ctx : ty_ctx) (b : binding) :
+    (Source.span Tast.binding * Type.t, Error.t) result =
   let open Result.Syntax in
   match b with
   | Def { name; expr; span; ann } -> (
@@ -207,8 +211,8 @@ let binding (ctx : ty_ctx) (b : Cst.binding) :
           let* expr, type_ = infer expr ctx in
           Ok (Tast.Binding.Def { name; expr; span; type_ }, type_))
 
-let rec multiple_passes (previous : int) (bindings : Cst.binding list)
-    (ctx : ty_ctx) : (Tast.binding list, Error.t list) result =
+let rec multiple_passes (previous : int) (bindings : binding list)
+    (ctx : ty_ctx) : (Source.span Tast.binding list, Error.t list) result =
   let rec loop errs oks bs ctx =
     match bs with
     | [] ->
@@ -231,16 +235,15 @@ let rec multiple_passes (previous : int) (bindings : Cst.binding list)
   in
   loop [] [] bindings ctx
 
-let module_ (m : Cst.module_) (ctx : ty_ctx) :
-    (Tast.module_, Error.t list) result =
+let module_ (m : module_) (ctx : ty_ctx) :
+    (Source.span Tast.module_, Error.t list) result =
   let open Result.Syntax in
   match m with
   | Module { name; bindings; span } ->
       let* bindings = multiple_passes (List.length bindings) bindings ctx in
       Ok (Tast.Module.Module { name; bindings; span })
 
-let solve_module (m : Cst.module_) (ctx : ty_ctx) :
-    (ty_ctx, Error.t list) result =
+let solve_module (m : module_) (ctx : ty_ctx) : (ty_ctx, Error.t list) result =
   let open Result.Syntax in
   let insert_to_ctx ctx (name, ty) = TyCtx.insert name ty ctx in
   let type_of_binding b =

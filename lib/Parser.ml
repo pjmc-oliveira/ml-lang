@@ -195,11 +195,16 @@ open Combinator
 open Combinator.Syntax
 open Combinator.Infix
 
+type ty = Source.span Cst.ty
+type expr = Source.span Cst.expr
+type binding = Source.span Cst.binding
+type module_ = Source.span Cst.module_
+
 let toplevel =
   let* () = drop_until (fun t -> t = Def) in
   pure ()
 
-let rec type_ () : Cst.type_ t =
+let rec type_ () : ty t =
   with_span
     (let* from = type_atom () in
      one_of
@@ -210,7 +215,7 @@ let rec type_ () : Cst.type_ t =
          pure (fun _ -> from);
        ])
 
-and type_atom () : Cst.type_ t =
+and type_atom () : ty t =
   with_span
     (let* tk = token in
      match tk with
@@ -218,10 +223,10 @@ and type_atom () : Cst.type_ t =
      | LeftParen ->
          let* expr = type_ () in
          let* _ = expect RightParen in
-         pure (fun span -> Cst.Type.map_span (fun _ -> span) expr)
+         pure (fun span -> Cst.Type.map (fun _ -> span) expr)
      | _ -> fail_lines [ Text "Expected type atom" ])
 
-let rec expression () : Cst.expr t =
+let rec expression () : expr t =
   one_of
     (error [ Text "Expected expression" ])
     [ let_in (); it_then_else (); lambda (); annotation () ]
@@ -266,7 +271,7 @@ and annotation () =
          pure (fun _ -> expr);
        ])
 
-and application () =
+and application () : expr t =
   with_span
     (let* func = atom () in
      let* args = many (atom ()) in
@@ -280,7 +285,7 @@ and application () =
      in
      pure expr)
 
-and atom () =
+and atom () : expr t =
   with_span
     (let* tk = token in
      match tk with
@@ -290,10 +295,10 @@ and atom () =
      | LeftParen ->
          let* expr = expression () in
          let* _ = expect RightParen in
-         pure (fun span -> Cst.Expr.map_span (fun _ -> span) expr)
+         pure (fun span -> Cst.Expr.map (fun _ -> span) expr)
      | _ -> fail_lines [ Text "Expected atom" ])
 
-let def =
+let def : (Source.span -> binding) t =
   let* () = accept Def in
   let* name = lower_identifier in
   let* ann = optional (accept Colon *> type_ ()) in
@@ -301,11 +306,11 @@ let def =
   let* expr = expression () in
   pure (fun span -> Cst.Binding.Def { name; ann; expr; span })
 
-let binding =
+let binding : binding t =
   let* b, sp = span_of (one_of (error [ Text "Expected binding" ]) [ def ]) in
   pure (b sp)
 
-let module_ =
+let module_ : module_ t =
   let parse_module =
     let* () = accept Module in
     let* name = upper_identifier in

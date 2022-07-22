@@ -1,10 +1,10 @@
 module Type = struct
-  type t =
-    | Const of { name : string; span : Source.Span.t }
-    | Arrow of { from : t; to_ : t; span : Source.Span.t }
+  type 'a t =
+    | Const of { name : string; span : 'a }
+    | Arrow of { from : 'a t; to_ : 'a t; span : 'a }
   [@@deriving show]
 
-  let rec to_ast e : Ast.Type.t =
+  let rec to_ast e : Ast.ty =
     match e with
     | Const { name; _ } -> Const { name }
     | Arrow { from; to_; _ } ->
@@ -12,35 +12,35 @@ module Type = struct
         let to_ = to_ast to_ in
         Arrow { from; to_ }
 
-  let map_span f = function
+  let map f = function
     | Const { name; span } -> Const { name; span = f span }
     | Arrow { from; to_; span } -> Arrow { from; to_; span = f span }
 end
 
 module Expr = struct
-  type t =
-    | Int of { value : int; span : Source.Span.t }
-    | Bool of { value : bool; span : Source.Span.t }
-    | Var of { name : string; span : Source.Span.t }
+  type 'a t =
+    | Int of { value : int; span : 'a }
+    | Bool of { value : bool; span : 'a }
+    | Var of { name : string; span : 'a }
     | Let of {
         name : string;
-        def_t : Type.t option;
-        def : t;
-        body : t;
-        span : Source.Span.t;
+        def_t : 'a Type.t option;
+        def : 'a t;
+        body : 'a t;
+        span : 'a;
       }
-    | If of { cond : t; con : t; alt : t; span : Source.Span.t }
+    | If of { cond : 'a t; con : 'a t; alt : 'a t; span : 'a }
     | Lam of {
         param : string;
-        param_t : Type.t option;
-        body : t;
-        span : Source.Span.t;
+        param_t : 'a Type.t option;
+        body : 'a t;
+        span : 'a;
       }
-    | App of { func : t; arg : t; span : Source.Span.t }
-    | Ann of { expr : t; ann : Type.t; span : Source.Span.t }
+    | App of { func : 'a t; arg : 'a t; span : 'a }
+    | Ann of { expr : 'a t; ann : 'a Type.t; span : 'a }
   [@@deriving show]
 
-  let rec to_ast e : Ast.Expr.t =
+  let rec to_ast e : Ast.expr =
     match e with
     | Int { value; _ } -> Int { value }
     | Bool { value; _ } -> Bool { value }
@@ -68,7 +68,7 @@ module Expr = struct
         let expr = to_ast expr in
         Ann { expr; ann }
 
-  let map_span f = function
+  let map f = function
     | Int { value; span } -> Int { value; span = f span }
     | Bool { value; span } -> Bool { value; span = f span }
     | Var { name; span } -> Var { name; span = f span }
@@ -82,16 +82,16 @@ module Expr = struct
 end
 
 module Binding = struct
-  type t =
+  type 'a t =
     | Def of {
         name : string;
-        ann : Type.t option;
-        expr : Expr.t;
-        span : Source.Span.t;
+        ann : 'a Type.t option;
+        expr : 'a Expr.t;
+        span : 'a;
       }
   [@@deriving show]
 
-  let to_ast b : Ast.Binding.t =
+  let to_ast b : Ast.binding =
     match b with
     | Def { name; ann; expr; _ } ->
         let ann = Option.map Type.to_ast ann in
@@ -100,22 +100,18 @@ module Binding = struct
 end
 
 module Module = struct
-  type t =
-    | Module of {
-        name : string;
-        bindings : Binding.t list;
-        span : Source.Span.t;
-      }
+  type 'a t =
+    | Module of { name : string; bindings : 'a Binding.t list; span : 'a }
   [@@deriving show]
 
-  let to_ast m : Ast.Module.t =
+  let to_ast m : Ast.module_ =
     match m with
     | Module { name; bindings; _ } ->
         let bindings = List.map Binding.to_ast bindings in
         Module { name; bindings }
 end
 
-type type_ = Type.t
-type expr = Expr.t
-type binding = Binding.t
-type module_ = Module.t
+type 'a ty = 'a Type.t
+type 'a expr = 'a Expr.t
+type 'a binding = 'a Binding.t
+type 'a module_ = 'a Module.t

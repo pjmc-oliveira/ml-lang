@@ -25,12 +25,13 @@ let lookup location name ctx =
 
 let define name value ctx = TmCtx.insert name value ctx
 
-let defer (expr : Tast.expr) (ctx : tm_ctx) : Value.t =
+let defer (expr : Source.span Tast.expr) (ctx : tm_ctx) : Value.t =
   Value.Thunk { ctx; expr }
 
 let fix name expr ctx = Value.Fix { ctx; name; expr }
 
-let rec eval (e : Tast.expr) (ctx : tm_ctx) : (Value.t, Error.t) result =
+let rec eval (e : Source.span Tast.expr) (ctx : tm_ctx) :
+    (Value.t, Error.t) result =
   let open Result.Syntax in
   match e with
   | Int { value; _ } -> Ok (Value.Int value)
@@ -81,7 +82,7 @@ and force (v : Value.t) : (Value.t, Error.t) result =
       let* expr = eval expr ctx' in
       force expr
 
-let binding (b : Tast.binding) (ctx : tm_ctx) :
+let binding (b : Source.span Tast.binding) (ctx : tm_ctx) :
     (Value.t * tm_ctx, Error.t list) result =
   let open Result.Syntax in
   Result.map_error
@@ -91,7 +92,7 @@ let binding (b : Tast.binding) (ctx : tm_ctx) :
         let* value = eval expr ctx in
         Ok (value, ctx))
 
-let defer_binding (b : Tast.binding) (ctx : tm_ctx) :
+let defer_binding (b : Source.span Tast.binding) (ctx : tm_ctx) :
     (Value.t * tm_ctx, Error.t list) result =
   match b with
   | Def { name; expr; _ } ->
@@ -99,14 +100,14 @@ let defer_binding (b : Tast.binding) (ctx : tm_ctx) :
       let ctx' = define name fixpoint ctx in
       Ok (fixpoint, ctx')
 
-let find_entrypoint entrypoint bindings : Tast.binding option =
+let find_entrypoint entrypoint bindings : Source.span Tast.binding option =
   List.find_opt
     (fun b ->
       match b with
       | Tast.Binding.Def { name; _ } -> name = entrypoint)
     bindings
 
-let module_ entrypoint (m : Tast.module_) : Value.t t =
+let module_ entrypoint (m : Source.span Tast.module_) : Value.t t =
   match m with
   | Module { bindings; span; _ } ->
       let* _ = traverse_list defer_binding bindings in
@@ -122,8 +123,8 @@ let module_ entrypoint (m : Tast.module_) : Value.t t =
       in
       binding b
 
-let run ?(entrypoint = "main") ?(context = TmCtx.empty) (m : Tast.module_) :
-    (Value.t, Error.t list) result =
+let run ?(entrypoint = "main") ?(context = TmCtx.empty)
+    (m : Source.span Tast.module_) : (Value.t, Error.t list) result =
   let open Result.Syntax in
   match (module_ entrypoint) m context with
   | Ok (value, _) ->

@@ -11,7 +11,7 @@ let parse_module str =
 
 let string_of_cst_result r =
   match r with
-  | Ok m -> "Ok " ^ Cst.Module.show m
+  | Ok m -> "Ok " ^ Cst.Module.show Source.Span.pp m
   | Error e -> "Error " ^ String.concat "\n" (List.map Error.to_string e)
 
 let test_parser_cst label str cst =
@@ -20,7 +20,7 @@ let test_parser_cst label str cst =
 
 let string_of_ast_result r =
   match r with
-  | Ok m -> "Ok " ^ Ast.Module.show m
+  | Ok m -> "Ok " ^ Ast.show_module_ m
   | Error e -> "Error " ^ String.concat "\n" (List.map Error.to_string e)
 
 let test_parser_ast label str ast =
