@@ -26,7 +26,7 @@ let string_of_ast_result r =
 let test_parser_ast label str ast =
   label >:: fun _ ->
   assert_equal (Ok ast)
-    (Result.map Syn.cst_to_ast (parse_module str))
+    (Result.map Syn.Cst.to_ast (parse_module str))
     ~printer:string_of_ast_result
 
 let cst_tests =

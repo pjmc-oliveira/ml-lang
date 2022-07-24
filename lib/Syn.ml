@@ -154,6 +154,60 @@ module Cst = struct
     | ELam ((x, param_t), param, body) -> ELam ((f x, param_t), param, body)
     | EApp (x, func, arg) -> EApp (f x, func, arg)
     | EExt (`Ann (x, expr, ty)) -> EExt (`Ann (f x, expr, ty))
+
+  let rec ty_to_ast (t : ty) : Ast.ty =
+    match t with
+    | TCon (_, name) -> TCon ((), name)
+    | TVar (_, name) -> TVar ((), name)
+    | TArr (_, from, to_) ->
+        let from = ty_to_ast from in
+        let to_ = ty_to_ast to_ in
+        TArr ((), from, to_)
+    | TForall (_, tvars, ty) ->
+        let ty = ty_to_ast ty in
+        TForall ((), tvars, ty)
+
+  let lit_to_ast (l : lit) : Ast.lit =
+    match l with
+    | Int v -> Int v
+    | Bool v -> Bool v
+
+  let rec expr_to_ast (e : expr) : Ast.expr =
+    match (e : expr) with
+    | ELit (_, lit) -> ELit ((), lit_to_ast lit)
+    | EVar (_, name) -> EVar ((), name)
+    | ELet ((_, def_t), name, def, body) ->
+        let def_t = Option.map ty_to_ast def_t in
+        let def = expr_to_ast def in
+        let body = expr_to_ast body in
+        ELet (def_t, name, def, body)
+    | EIf (_, cond, con, alt) ->
+        let cond = expr_to_ast cond in
+        let con = expr_to_ast con in
+        let alt = expr_to_ast alt in
+        EIf ((), cond, con, alt)
+    | ELam ((_, param_t), param, body) ->
+        let param_t = Option.map ty_to_ast param_t in
+        let body = expr_to_ast body in
+        ELam (param_t, param, body)
+    | EApp (_, func, arg) ->
+        let func = expr_to_ast func in
+        let arg = expr_to_ast arg in
+        EApp ((), func, arg)
+    | EExt (`Ann (_, expr, ty)) ->
+        let expr = expr_to_ast expr in
+        let ty = ty_to_ast ty in
+        EExt (`Ann (expr, ty))
+
+  let bind_to_ast (b : bind) : Ast.bind =
+    match b with
+    | Def ((_, ty), name, expr) ->
+        Def (Option.map ty_to_ast ty, name, expr_to_ast expr)
+
+  let to_ast (m : modu) : Ast.modu =
+    match m with
+    | Module (_, name, bindings) ->
+        Module ((), name, List.map bind_to_ast bindings)
 end
 
 module Tast = Make (struct
@@ -165,10 +219,9 @@ module Tast = Make (struct
   type ('e, 't) var = Type.t * Source.Span.t [@@deriving show]
   type ('e, 't) let_ = Type.t * Source.Span.t [@@deriving show]
   type ('e, 't) if_ = Type.t * Source.Span.t [@@deriving show]
-  type ('e, 't) lam =
-    Type.t * (** param_t *)
-    Type.t * (** body_t *)
-    Source.Span.t [@@deriving show]
+
+  (* type information  from [param_t] to [body_t]*)
+  type ('e, 't) lam = Type.t * Type.t * Source.Span.t [@@deriving show]
   type ('e, 't) app = Type.t * Source.Span.t [@@deriving show]
   type ('e, 't) ext = void
 
@@ -184,59 +237,3 @@ module Tast = Make (struct
   type 't def = Type.t * Source.Span.t [@@deriving show]
   type xmodu = Source.Span.t [@@deriving show]
 end)
-
-(* Convert from Cst to Ast *)
-
-let rec ty_cst_to_ast (t : Cst.ty) : Ast.ty =
-  match t with
-  | TCon (_, name) -> TCon ((), name)
-  | TVar (_, name) -> TVar ((), name)
-  | TArr (_, from, to_) ->
-      let from = ty_cst_to_ast from in
-      let to_ = ty_cst_to_ast to_ in
-      TArr ((), from, to_)
-  | TForall (_, tvars, ty) ->
-      let ty = ty_cst_to_ast ty in
-      TForall ((), tvars, ty)
-
-let lit_cst_to_ast (l : Cst.lit) : Ast.lit =
-  match l with
-  | Int v -> Int v
-  | Bool v -> Bool v
-
-let rec expr_cst_to_ast (e : Cst.expr) : Ast.expr =
-  match (e : Cst.expr) with
-  | ELit (_, lit) -> ELit ((), lit_cst_to_ast lit)
-  | EVar (_, name) -> EVar ((), name)
-  | ELet ((_, def_t), name, def, body) ->
-      let def_t = Option.map ty_cst_to_ast def_t in
-      let def = expr_cst_to_ast def in
-      let body = expr_cst_to_ast body in
-      ELet (def_t, name, def, body)
-  | EIf (_, cond, con, alt) ->
-      let cond = expr_cst_to_ast cond in
-      let con = expr_cst_to_ast con in
-      let alt = expr_cst_to_ast alt in
-      EIf ((), cond, con, alt)
-  | ELam ((_, param_t), param, body) ->
-      let param_t = Option.map ty_cst_to_ast param_t in
-      let body = expr_cst_to_ast body in
-      ELam (param_t, param, body)
-  | EApp (_, func, arg) ->
-      let func = expr_cst_to_ast func in
-      let arg = expr_cst_to_ast arg in
-      EApp ((), func, arg)
-  | EExt (`Ann (_, expr, ty)) ->
-      let expr = expr_cst_to_ast expr in
-      let ty = ty_cst_to_ast ty in
-      EExt (`Ann (expr, ty))
-
-let bind_cst_to_ast (b : Cst.bind) : Ast.bind =
-  match b with
-  | Def ((_, ty), name, expr) ->
-      Def (Option.map ty_cst_to_ast ty, name, expr_cst_to_ast expr)
-
-let cst_to_ast (m : Cst.modu) : Ast.modu =
-  match m with
-  | Module (_, name, bindings) ->
-      Module ((), name, List.map bind_cst_to_ast bindings)
