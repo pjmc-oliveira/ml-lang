@@ -215,15 +215,15 @@ let suite =
                   ]));
          test_solver ~initial_ctx:BuiltIns.ty_ctx "recursive let binding"
            "module Hello = {
-               def main =
-                 let fact : Int -> Int = \\x
-                   if eq 0 x then
-                     1
-                   else
-                     mul x (fact (sub x 1))
-                 in
-                   fact
-             }"
+              def main =
+                let fact : Int -> Int = \\x
+                  if eq 0 x then
+                    1
+                  else
+                    mul x (fact (sub x 1))
+                in
+                  fact
+            }"
            TyCtx.(
              union BuiltIns.ty_ctx
                (of_list

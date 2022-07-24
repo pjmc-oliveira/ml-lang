@@ -3,10 +3,10 @@ module TmCtx = Ctx.Make (String)
 type t =
   | Int of int
   | Bool of bool
-  | Closure of { ctx : t TmCtx.t; param : string; body : Source.span Tast.expr }
-  | Thunk of { ctx : t TmCtx.t; expr : Source.span Tast.expr }
+  | Closure of { ctx : t TmCtx.t; param : string; body : Syn.Tast.expr }
+  | Thunk of { ctx : t TmCtx.t; expr : Syn.Tast.expr }
   | Native of (t -> t)
-  | Fix of { ctx : t TmCtx.t; name : string; expr : Source.span Tast.expr }
+  | Fix of { ctx : t TmCtx.t; name : string; expr : Syn.Tast.expr }
 
 let show = function
   | Int n -> string_of_int n

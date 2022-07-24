@@ -11,7 +11,7 @@ let parse_module str =
 
 let string_of_cst_result r =
   match r with
-  | Ok m -> "Ok " ^ Cst.Module.show Source.Span.pp m
+  | Ok m -> "Ok " ^ Syn.Cst.show_modu m
   | Error e -> "Error " ^ String.concat "\n" (List.map Error.to_string e)
 
 let test_parser_cst label str cst =
@@ -20,500 +20,248 @@ let test_parser_cst label str cst =
 
 let string_of_ast_result r =
   match r with
-  | Ok m -> "Ok " ^ Ast.show_module_ m
+  | Ok m -> "Ok " ^ Syn.Ast.show_modu m
   | Error e -> "Error " ^ String.concat "\n" (List.map Error.to_string e)
 
 let test_parser_ast label str ast =
   label >:: fun _ ->
   assert_equal (Ok ast)
-    (Result.map Cst.Module.to_ast (parse_module str))
+    (Result.map Syn.cst_to_ast (parse_module str))
     ~printer:string_of_ast_result
 
 let cst_tests =
+  let open Syn.Cst in
   [
     test_parser_cst "empty module" "module Hello = {}"
-      (Module
-         {
-           name = "Hello";
-           bindings = [];
-           span = { index = 0; line = 1; column = 1; length = 17 };
-         });
+      (Module ({ index = 0; line = 1; column = 1; length = 17 }, "Hello", []));
     test_parser_cst "one definition" "module Hello = { def hello = 1 }"
       (Module
-         {
-           name = "Hello";
-           bindings =
-             [
-               Def
-                 {
-                   name = "hello";
-                   ann = None;
-                   expr =
-                     Int
-                       {
-                         value = 1;
-                         span =
-                           { index = 29; line = 1; column = 30; length = 1 };
-                       };
-                   span = { index = 17; line = 1; column = 18; length = 13 };
-                 };
-             ];
-           span = { index = 0; line = 1; column = 1; length = 32 };
-         });
+         ( { index = 0; line = 1; column = 1; length = 32 },
+           "Hello",
+           [
+             Def
+               ( ({ index = 17; line = 1; column = 18; length = 13 }, None),
+                 "hello",
+                 ELit ({ index = 29; line = 1; column = 30; length = 1 }, Int 1)
+               );
+           ] ));
     test_parser_cst "two definitions"
       "module Hello = { def hello = 1 def bye = 2 }"
       (Module
-         {
-           name = "Hello";
-           bindings =
-             [
-               Def
-                 {
-                   name = "hello";
-                   ann = None;
-                   expr =
-                     Int
-                       {
-                         value = 1;
-                         span =
-                           { index = 29; line = 1; column = 30; length = 1 };
-                       };
-                   span = { index = 17; line = 1; column = 18; length = 13 };
-                 };
-               Def
-                 {
-                   name = "bye";
-                   ann = None;
-                   expr =
-                     Int
-                       {
-                         value = 2;
-                         span =
-                           { index = 41; line = 1; column = 42; length = 1 };
-                       };
-                   span = { index = 31; line = 1; column = 32; length = 11 };
-                 };
-             ];
-           span = { index = 0; line = 1; column = 1; length = 44 };
-         });
+         ( { index = 0; line = 1; column = 1; length = 44 },
+           "Hello",
+           [
+             Def
+               ( ({ index = 17; line = 1; column = 18; length = 13 }, None),
+                 "hello",
+                 ELit ({ index = 29; line = 1; column = 30; length = 1 }, Int 1)
+               );
+             Def
+               ( ({ index = 31; line = 1; column = 32; length = 11 }, None),
+                 "bye",
+                 ELit ({ index = 41; line = 1; column = 42; length = 1 }, Int 2)
+               );
+           ] ));
   ]
 
 let ast_tests =
   [
     test_parser_ast "empty module" "module Hello = {}"
-      (Module { name = "Hello"; bindings = [] });
+      (Module ((), "Hello", []));
     test_parser_ast "one definition" "module Hello = { def hello = 1 }"
-      (Module
-         {
-           name = "Hello";
-           bindings =
-             [ Def { name = "hello"; ann = None; expr = Int { value = 1 } } ];
-         });
+      (Module ((), "Hello", [ Def (None, "hello", ELit ((), Int 1)) ]));
     test_parser_ast "True literal" "module Hello = { def hello = True }"
-      (Module
-         {
-           name = "Hello";
-           bindings =
-             [
-               Def { name = "hello"; ann = None; expr = Bool { value = true } };
-             ];
-         });
+      (Module ((), "Hello", [ Def (None, "hello", ELit ((), Bool true)) ]));
     test_parser_ast "True literal" "module Hello = { def hello = False }"
-      (Module
-         {
-           name = "Hello";
-           bindings =
-             [
-               Def { name = "hello"; ann = None; expr = Bool { value = false } };
-             ];
-         });
+      (Module ((), "Hello", [ Def (None, "hello", ELit ((), Bool false)) ]));
     test_parser_ast "type annotated expression"
       "module Hello = { def hello = 1 : Int }"
       (Module
-         {
-           name = "Hello";
-           bindings =
-             [
-               Def
-                 {
-                   name = "hello";
-                   ann = None;
-                   expr =
-                     Ann
-                       {
-                         expr = Int { value = 1 };
-                         ann = Const { name = "Int" };
-                       };
-                 };
-             ];
-         });
+         ( (),
+           "Hello",
+           [
+             Def
+               (None, "hello", EExt (`Ann (ELit ((), Int 1), TCon ((), "Int"))));
+           ] ));
     test_parser_ast "parenthesized expression"
       "module Hello = { def hello = if (let x = True in x) then 1 else 2 }"
       (Module
-         {
-           name = "Hello";
-           bindings =
-             [
-               Def
-                 {
-                   name = "hello";
-                   ann = None;
-                   expr =
-                     If
-                       {
-                         cond =
-                           Let
-                             {
-                               name = "x";
-                               def_t = None;
-                               def = Bool { value = true };
-                               body = Var { name = "x" };
-                             };
-                         con = Int { value = 1 };
-                         alt = Int { value = 2 };
-                       };
-                 };
-             ];
-         });
+         ( (),
+           "Hello",
+           [
+             Def
+               ( None,
+                 "hello",
+                 EIf
+                   ( (),
+                     ELet (None, "x", ELit ((), Bool true), EVar ((), "x")),
+                     ELit ((), Int 1),
+                     ELit ((), Int 2) ) );
+           ] ));
     test_parser_ast "two definitions"
       "module Hello = { def hello = 1 def bye = hello }"
       (Module
-         {
-           name = "Hello";
-           bindings =
-             [
-               Def { name = "hello"; ann = None; expr = Int { value = 1 } };
-               Def { name = "bye"; ann = None; expr = Var { name = "hello" } };
-             ];
-         });
+         ( (),
+           "Hello",
+           [
+             Def (None, "hello", ELit ((), Int 1));
+             Def (None, "bye", EVar ((), "hello"));
+           ] ));
     test_parser_ast "let expression"
       "module Hello = { def hello = let x = 1 in x }"
       (Module
-         {
-           name = "Hello";
-           bindings =
-             [
-               Def
-                 {
-                   name = "hello";
-                   ann = None;
-                   expr =
-                     Let
-                       {
-                         name = "x";
-                         def_t = None;
-                         def = Int { value = 1 };
-                         body = Var { name = "x" };
-                       };
-                 };
-             ];
-         });
+         ( (),
+           "Hello",
+           [
+             Def
+               ( None,
+                 "hello",
+                 ELet (None, "x", ELit ((), Int 1), EVar ((), "x")) );
+           ] ));
     test_parser_ast "if expression"
       "module Hello = { def hello = if True then 1 else x }"
       (Module
-         {
-           name = "Hello";
-           bindings =
-             [
-               Def
-                 {
-                   name = "hello";
-                   ann = None;
-                   expr =
-                     If
-                       {
-                         cond = Bool { value = true };
-                         con = Int { value = 1 };
-                         alt = Var { name = "x" };
-                       };
-                 };
-             ];
-         });
+         ( (),
+           "Hello",
+           [
+             Def
+               ( None,
+                 "hello",
+                 EIf ((), ELit ((), Bool true), ELit ((), Int 1), EVar ((), "x"))
+               );
+           ] ));
     test_parser_ast "lambda expression with annotated parameter"
       "module Hello = { def hello = \\x : Int. x }"
       (Module
-         {
-           name = "Hello";
-           bindings =
-             [
-               Def
-                 {
-                   name = "hello";
-                   ann = None;
-                   expr =
-                     Lam
-                       {
-                         param = "x";
-                         param_t = Some (Const { name = "Int" });
-                         body = Var { name = "x" };
-                       };
-                 };
-             ];
-         });
+         ( (),
+           "Hello",
+           [
+             Def
+               ( None,
+                 "hello",
+                 ELam (Some (TCon ((), "Int")), "x", EVar ((), "x")) );
+           ] ));
     test_parser_ast "lambda expression" "module Hello = { def hello = \\x x }"
       (Module
-         {
-           name = "Hello";
-           bindings =
-             [
-               Def
-                 {
-                   name = "hello";
-                   ann = None;
-                   expr =
-                     Lam
-                       {
-                         param = "x";
-                         param_t = None;
-                         body = Var { name = "x" };
-                       };
-                 };
-             ];
-         });
+         ((), "Hello", [ Def (None, "hello", ELam (None, "x", EVar ((), "x"))) ]));
     test_parser_ast "lambda expression annotated as a whole"
       "module Hello = { def hello = (\\x x) : Int -> Int }"
       (Module
-         {
-           name = "Hello";
-           bindings =
-             [
-               Def
-                 {
-                   name = "hello";
-                   ann = None;
-                   expr =
-                     Ann
-                       {
-                         expr =
-                           Lam
-                             {
-                               param = "x";
-                               param_t = None;
-                               body = Var { name = "x" };
-                             };
-                         ann =
-                           Arrow
-                             {
-                               from = Const { name = "Int" };
-                               to_ = Const { name = "Int" };
-                             };
-                       };
-                 };
-             ];
-         });
+         ( (),
+           "Hello",
+           [
+             Def
+               ( None,
+                 "hello",
+                 EExt
+                   (`Ann
+                     ( ELam (None, "x", EVar ((), "x")),
+                       TArr ((), TCon ((), "Int"), TCon ((), "Int")) )) );
+           ] ));
     test_parser_ast "function application"
       "module Hello = { def hello = f x y z }"
       (Module
-         {
-           name = "Hello";
-           bindings =
-             [
-               Def
-                 {
-                   name = "hello";
-                   ann = None;
-                   expr =
-                     App
-                       {
-                         func =
-                           App
-                             {
-                               func =
-                                 App
-                                   {
-                                     func = Var { name = "f" };
-                                     arg = Var { name = "x" };
-                                   };
-                               arg = Var { name = "y" };
-                             };
-                         arg = Var { name = "z" };
-                       };
-                 };
-             ];
-         });
+         ( (),
+           "Hello",
+           [
+             Def
+               ( None,
+                 "hello",
+                 EApp
+                   ( (),
+                     EApp
+                       ( (),
+                         EApp ((), EVar ((), "f"), EVar ((), "x")),
+                         EVar ((), "y") ),
+                     EVar ((), "z") ) );
+           ] ));
     test_parser_ast "function application"
       "module Hello = { def hello = f (g x) }"
       (Module
-         {
-           name = "Hello";
-           bindings =
-             [
-               Def
-                 {
-                   name = "hello";
-                   ann = None;
-                   expr =
-                     App
-                       {
-                         func = Var { name = "f" };
-                         arg =
-                           App
-                             {
-                               func = Var { name = "g" };
-                               arg = Var { name = "x" };
-                             };
-                       };
-                 };
-             ];
-         });
+         ( (),
+           "Hello",
+           [
+             Def
+               ( None,
+                 "hello",
+                 EApp
+                   ( (),
+                     EVar ((), "f"),
+                     EApp ((), EVar ((), "g"), EVar ((), "x")) ) );
+           ] ));
     test_parser_ast "top level type annotation"
       "module Hello = { def hello : Bool = True }"
       (Module
-         {
-           name = "Hello";
-           bindings =
-             [
-               Def
-                 {
-                   name = "hello";
-                   ann = Some (Const { name = "Bool" });
-                   expr = Bool { value = true };
-                 };
-             ];
-         });
+         ( (),
+           "Hello",
+           [ Def (Some (TCon ((), "Bool")), "hello", ELit ((), Bool true)) ] ));
     test_parser_ast "top level polymorphic type"
       "module Hello = {
-        def const : forall a b. a -> b -> a
-          = \\x \\y x
-      }"
+            def const : forall a b. a -> b -> a
+              = \\x \\y x
+          }"
       (Module
-         {
-           name = "Hello";
-           bindings =
-             [
-               Def
-                 {
-                   name = "const";
-                   ann =
-                     Some
-                       (Forall
-                          {
-                            ty_vars = [ "a"; "b" ];
-                            type_ =
-                              Arrow
-                                {
-                                  from = Var { name = "a" };
-                                  to_ =
-                                    Arrow
-                                      {
-                                        from = Var { name = "b" };
-                                        to_ = Var { name = "a" };
-                                      };
-                                };
-                          });
-                   expr =
-                     Lam
-                       {
-                         param = "x";
-                         param_t = None;
-                         body =
-                           Lam
-                             {
-                               param = "y";
-                               param_t = None;
-                               body = Var { name = "x" };
-                             };
-                       };
-                 };
-             ];
-         });
+         ( (),
+           "Hello",
+           [
+             Def
+               ( Some
+                   (TForall
+                      ( (),
+                        [ "a"; "b" ],
+                        TArr
+                          ( (),
+                            TVar ((), "a"),
+                            TArr ((), TVar ((), "b"), TVar ((), "a")) ) )),
+                 "const",
+                 ELam (None, "x", ELam (None, "y", EVar ((), "x"))) );
+           ] ));
     test_parser_ast "let-binding type annotation"
       "module Hello = { def hello = let x : Bool = True in x }"
       (Module
-         {
-           name = "Hello";
-           bindings =
-             [
-               Def
-                 {
-                   name = "hello";
-                   ann = None;
-                   expr =
-                     Let
-                       {
-                         name = "x";
-                         def_t = Some (Const { name = "Bool" });
-                         def = Bool { value = true };
-                         body = Var { name = "x" };
-                       };
-                 };
-             ];
-         });
+         ( (),
+           "Hello",
+           [
+             Def
+               ( None,
+                 "hello",
+                 ELet
+                   ( Some (TCon ((), "Bool")),
+                     "x",
+                     ELit ((), Bool true),
+                     EVar ((), "x") ) );
+           ] ));
     test_parser_ast "multi-parameter lambda"
       "module Hello = { def const : Int -> Int -> Int = \\x \\y x }"
       (Module
-         {
-           name = "Hello";
-           bindings =
-             [
-               Def
-                 {
-                   name = "const";
-                   ann =
-                     Some
-                       (Arrow
-                          {
-                            from = Const { name = "Int" };
-                            to_ =
-                              Arrow
-                                {
-                                  from = Const { name = "Int" };
-                                  to_ = Const { name = "Int" };
-                                };
-                          });
-                   expr =
-                     Lam
-                       {
-                         param = "x";
-                         param_t = None;
-                         body =
-                           Lam
-                             {
-                               param = "y";
-                               param_t = None;
-                               body = Var { name = "x" };
-                             };
-                       };
-                 };
-             ];
-         });
+         ( (),
+           "Hello",
+           [
+             Def
+               ( Some
+                   (TArr
+                      ( (),
+                        TCon ((), "Int"),
+                        TArr ((), TCon ((), "Int"), TCon ((), "Int")) )),
+                 "const",
+                 ELam (None, "x", ELam (None, "y", EVar ((), "x"))) );
+           ] ));
     test_parser_ast "high order function type"
       "module Hello = { def hello : (Int -> Int) -> Int = \\f f 1 }"
       (Module
-         {
-           name = "Hello";
-           bindings =
-             [
-               Def
-                 {
-                   name = "hello";
-                   ann =
-                     Some
-                       (Arrow
-                          {
-                            from =
-                              Arrow
-                                {
-                                  from = Const { name = "Int" };
-                                  to_ = Const { name = "Int" };
-                                };
-                            to_ = Const { name = "Int" };
-                          });
-                   expr =
-                     Lam
-                       {
-                         param = "f";
-                         param_t = None;
-                         body =
-                           App
-                             {
-                               func = Var { name = "f" };
-                               arg = Int { value = 1 };
-                             };
-                       };
-                 };
-             ];
-         });
+         ( (),
+           "Hello",
+           [
+             Def
+               ( Some
+                   (TArr
+                      ( (),
+                        TArr ((), TCon ((), "Int"), TCon ((), "Int")),
+                        TCon ((), "Int") )),
+                 "hello",
+                 ELam (None, "f", EApp ((), EVar ((), "f"), ELit ((), Int 1)))
+               );
+           ] ));
   ]
 
 let suite = "Parser" >::: cst_tests @ ast_tests

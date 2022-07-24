@@ -122,27 +122,27 @@ let suite =
          test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
            "recursive function"
            "module Hello = {
-               def fact : Int -> Int = \\x
-                 if eq 0 x then
-                   1
-                 else
-                   mul x (fact (sub x 1))
+              def fact : Int -> Int = \\x
+                if eq 0 x then
+                  1
+                else
+                  mul x (fact (sub x 1))
 
-               def main = fact 5
-             }"
+              def main = fact 5
+            }"
            (Int 120);
          test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
            "recursive let-binding"
            "module Hello = {
-                def main =
-                 let fact : Int -> Int = \\x
-                   if eq 0 x then
-                     1
-                   else
-                     mul x (fact (sub x 1))
-                 in
-                   fact 5
-              }"
+              def main =
+              let fact : Int -> Int = \\x
+                if eq 0 x then
+                  1
+                else
+                  mul x (fact (sub x 1))
+              in
+                fact 5
+            }"
            (Int 120);
          test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
            "top-level polymorphic function"
@@ -172,11 +172,11 @@ let suite =
           in
           test_interpreter ~tm_ctx ~ty_ctx "non-strict function application"
             "module Hello = {
-                def const : Int -> Int -> Int = \\x \\y
-                  x
+              def const : Int -> Int -> Int = \\x \\y
+                x
 
-                def main = const 1 (exit 2)
-              }"
+              def main = const 1 (exit 2)
+            }"
             (Int 1));
          (* Failure *)
          test_failure "local scope"
