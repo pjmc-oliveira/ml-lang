@@ -212,22 +212,34 @@ module Cst = struct
         Module ((), name, List.map bind_to_ast bindings)
 end
 
-module Tast = Make (struct
-  (* Type extensions *)
-  type xty = void [@@deriving show]
+module Tast = struct
+  include Make (struct
+    (* Type extensions *)
+    type xty = void [@@deriving show]
 
-  (* Expr extensions *)
-  type ('e, 't) lit = Type.t * Source.Span.t [@@deriving show]
-  type ('e, 't) var = Type.t * Source.Span.t [@@deriving show]
-  type ('e, 't) let_ = Type.t * Source.Span.t [@@deriving show]
-  type ('e, 't) if_ = Type.t * Source.Span.t [@@deriving show]
+    (* Expr extensions *)
+    type ('e, 't) lit = Type.mono * Source.Span.t [@@deriving show]
+    type ('e, 't) var = Type.mono * Source.Span.t [@@deriving show]
+    type ('e, 't) let_ = Type.mono * Source.Span.t [@@deriving show]
+    type ('e, 't) if_ = Type.mono * Source.Span.t [@@deriving show]
 
-  (* type information  from [param_t] to [body_t]*)
-  type ('e, 't) lam = Type.t * Type.t * Source.Span.t [@@deriving show]
-  type ('e, 't) app = Type.t * Source.Span.t [@@deriving show]
-  type ('e, 't) ext = void [@@deriving show]
+    (* type information  from [param_t] to [body_t]*)
+    type ('e, 't) lam = Type.mono * Type.mono * Source.Span.t [@@deriving show]
+    type ('e, 't) app = Type.mono * Source.Span.t [@@deriving show]
+    type ('e, 't) ext = void [@@deriving show]
 
-  (* Bindings and Module *)
-  type 't def = Type.t * Source.Span.t [@@deriving show]
-  type xmodu = Source.Span.t [@@deriving show]
-end)
+    (* Bindings and Module *)
+    type 't def = Type.poly * Source.Span.t [@@deriving show]
+    type xmodu = Source.Span.t [@@deriving show]
+  end)
+
+  let type_of_expr (e : expr) : Type.mono =
+    match e with
+    | ELit ((ty, _), _) -> ty
+    | EVar ((ty, _), _) -> ty
+    | ELet ((ty, _), _, _, _) -> ty
+    | EIf ((ty, _), _, _, _) -> ty
+    | ELam ((param_t, body_t, _), _, _) -> Type.Arrow (param_t, body_t)
+    | EApp ((ty, _), _, _) -> ty
+    | EExt _ -> failwith "Tast.type_of_expr void"
+end

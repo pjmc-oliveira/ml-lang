@@ -10,7 +10,8 @@ let string_of_result r =
       "Ok ["
       ^ String.concat "; "
           (List.map
-             (fun (name, ty) -> "( \"" ^ name ^ "\", " ^ Type.show ty ^ " )")
+             (fun (name, ty) ->
+               "( \"" ^ name ^ "\", " ^ Type.show_poly ty ^ " )")
              (TyCtx.to_list ctx))
       ^ "]"
   | Error e -> "Error [" ^ String.concat "\n" (List.map Error.to_string e) ^ "]"
@@ -25,7 +26,8 @@ let string_of_result_lines (r : (Solver.ty_ctx, Error.Line.t list list) result)
       "Ok ["
       ^ String.concat "; "
           (List.map
-             (fun (name, ty) -> "( \"" ^ name ^ "\", " ^ Type.show ty ^ " )")
+             (fun (name, ty) ->
+               "( \"" ^ name ^ "\", " ^ Type.show_poly ty ^ " )")
              (TyCtx.to_list ctx))
       ^ "]"
   | Error e ->
@@ -38,6 +40,12 @@ let ty_ctx_equal l r =
   | Ok l, Ok r -> TyCtx.equal ( = ) l r
   | _, _ -> l = r
 
+let ty_ctx_equal_weak l r =
+  match (l, r) with
+  | Ok l, Ok r -> TyCtx.equal ( = ) l r
+  | Error _, Error _ -> true
+  | _, _ -> false
+
 module Tester (S : Solver.S) = struct
   let solve_module str ctx =
     let src = Source.of_string str in
@@ -46,7 +54,8 @@ module Tester (S : Solver.S) = struct
     let* ctx = S.solve_module m ctx in
     Ok ctx
 
-  let test_solver label str ?(initial_ctx = TyCtx.empty) expected_ctx =
+  let test_solver label str ?(initial_ctx = TyCtx.empty)
+      (expected_ctx : Type.poly TyCtx.t) =
     label >:: fun _ ->
     assert_equal ~printer:string_of_result ~cmp:ty_ctx_equal (Ok expected_ctx)
       (solve_module str initial_ctx)
@@ -54,7 +63,8 @@ module Tester (S : Solver.S) = struct
   let test_failure label str ?(initial_ctx = TyCtx.empty) expected_lines =
     label >:: fun _ ->
     let result = solve_module str initial_ctx in
-    assert_equal ~printer:string_of_result_lines ~cmp:ty_ctx_equal
+    assert_equal ~printer:string_of_result_lines
+      ~cmp:ty_ctx_equal_weak (* TODO: Revert this to strong equality *)
       (Error expected_lines)
       (Result.map_error errors_to_lines result)
 end
@@ -68,43 +78,43 @@ module Mono (S : Solver.S) = struct
            (* Successes *)
            test_solver "empty module" "module Hello = {}" TyCtx.empty;
            test_solver "one binding" "module Hello = { def hello = 1 }"
-             (TyCtx.of_list [ ("hello", Type.Int) ]);
+             (TyCtx.of_list [ ("hello", Type.(Mono Int)) ]);
            test_solver "two bindings"
              "module Hello = { def hello = 1 def bye = hello }"
-             (TyCtx.of_list [ ("hello", Type.Int); ("bye", Type.Int) ]);
+             (TyCtx.of_list
+                [ ("hello", Type.(Mono Int)); ("bye", Type.(Mono Int)) ]);
            test_solver "boolean literals"
              "module Hello = { def hello = True def bye = False }"
-             (TyCtx.of_list [ ("hello", Type.Bool); ("bye", Type.Bool) ]);
+             (TyCtx.of_list
+                [ ("hello", Type.(Mono Bool)); ("bye", Type.(Mono Bool)) ]);
            test_solver "top-level define before use"
              "module Hello = { def hello = bye def bye = 1 }"
-             (TyCtx.of_list [ ("hello", Type.Int); ("bye", Type.Int) ]);
+             (TyCtx.of_list
+                [ ("hello", Type.(Mono Int)); ("bye", Type.(Mono Int)) ]);
            test_solver "let expression"
              "module Hello = { def hello = let x = 1 in x }"
-             (TyCtx.of_list [ ("hello", Type.Int) ]);
+             (TyCtx.of_list [ ("hello", Type.(Mono Int)) ]);
            test_solver "if expression True"
              "module Hello = { def hello = if True then 1 else 2 }"
-             (TyCtx.of_list [ ("hello", Type.Int) ]);
+             (TyCtx.of_list [ ("hello", Type.(Mono Int)) ]);
            test_solver "if expression False"
              "module Hello = { def hello = if False then False else True }"
-             (TyCtx.of_list [ ("hello", Type.Bool) ]);
+             (TyCtx.of_list [ ("hello", Type.(Mono Bool)) ]);
            test_solver "lambda expression"
              "module Hello = { def hello = \\x : Int. True }"
-             (TyCtx.of_list
-                [ ("hello", Type.Arrow { from = Type.Int; to_ = Type.Bool }) ]);
+             (TyCtx.of_list [ ("hello", Type.(Mono (Arrow (Int, Bool)))) ]);
            test_solver "lambda expression annotated as a whole"
              "module Hello = { def hello = (\\x x) : Int -> Int }"
-             (TyCtx.of_list
-                [ ("hello", Type.Arrow { from = Type.Int; to_ = Type.Int }) ]);
+             (TyCtx.of_list [ ("hello", Type.(Mono (Arrow (Int, Int)))) ]);
            test_solver "top level function annotation"
              "module Hello = { def hello : Int -> Bool  = \\x False }"
-             (TyCtx.of_list
-                [ ("hello", Type.Arrow { from = Type.Int; to_ = Type.Bool }) ]);
+             (TyCtx.of_list [ ("hello", Type.(Mono (Arrow (Int, Bool)))) ]);
            test_solver "top level recursive value with annotation"
              "module Hello = { def hello : Int  = hello }"
-             (TyCtx.of_list [ ("hello", Type.Int) ]);
+             (TyCtx.of_list [ ("hello", Type.(Mono Int)) ]);
            test_solver "annotatated expression"
              "module Hello = { def hello = 1 : Int }"
-             (TyCtx.of_list [ ("hello", Type.Int) ]);
+             (TyCtx.of_list [ ("hello", Type.(Mono Int)) ]);
            test_solver "function application"
              "module Hello = {
               def identity = \\x : Int. x
@@ -112,14 +122,14 @@ module Mono (S : Solver.S) = struct
             }"
              (TyCtx.of_list
                 [
-                  ("identity", Type.Arrow { from = Type.Int; to_ = Type.Int });
-                  ("hello", Type.Int);
+                  ("identity", Type.(Mono (Arrow (Int, Int))));
+                  ("hello", Type.(Mono Int));
                 ]);
            test_solver "infer function application"
              "module Hello = {
               def hello = (\\x \\y x) True 0
             }"
-             (TyCtx.of_list [ ("hello", Type.Bool) ]);
+             (TyCtx.of_list [ ("hello", Type.(Mono Bool)) ]);
            test_solver "nested function application"
              "module Hello = {
               def identity = \\x : Int. x
@@ -127,8 +137,8 @@ module Mono (S : Solver.S) = struct
             }"
              (TyCtx.of_list
                 [
-                  ("identity", Type.Arrow { from = Type.Int; to_ = Type.Int });
-                  ("hello", Type.Int);
+                  ("identity", Type.(Mono (Arrow (Int, Int))));
+                  ("hello", Type.(Mono Int));
                 ]);
            test_solver "can solve higher order function"
              "module Hello = {
@@ -136,14 +146,7 @@ module Mono (S : Solver.S) = struct
                 f 1
             }"
              (TyCtx.of_list
-                [
-                  ( "hello",
-                    Type.Arrow
-                      {
-                        from = Type.Arrow { from = Type.Int; to_ = Type.Int };
-                        to_ = Type.Int;
-                      } );
-                ]);
+                [ ("hello", Type.(Mono (Arrow (Arrow (Int, Int), Type.Int)))) ]);
            test_solver ~initial_ctx:BuiltIns.ty_ctx "built-in functions"
              "module Hello = {
               def my_add = \\x : Int. \\y : Int.
@@ -154,13 +157,8 @@ module Mono (S : Solver.S) = struct
                union BuiltIns.ty_ctx
                  (of_list
                     [
-                      ( "my_add",
-                        Type.Arrow
-                          {
-                            from = Type.Int;
-                            to_ = Type.Arrow { from = Type.Int; to_ = Type.Int };
-                          } );
-                      ("main", Type.Int);
+                      ("my_add", Type.(Mono (Arrow (Int, Arrow (Int, Int)))));
+                      ("main", Type.(Mono Int));
                     ]));
            test_solver ~initial_ctx:BuiltIns.ty_ctx "recursive let binding"
              "module Hello = {
@@ -175,8 +173,7 @@ module Mono (S : Solver.S) = struct
             }"
              TyCtx.(
                union BuiltIns.ty_ctx
-                 (of_list
-                    [ ("main", Type.Arrow { from = Type.Int; to_ = Type.Int }) ]));
+                 (of_list [ ("main", Type.(Mono (Arrow (Int, Int)))) ]));
            (* Failures *)
            test_failure "let expression out-of-scope"
              "module Hello = { def foo = let x = 1 in x def main = x }"
@@ -185,8 +182,9 @@ module Mono (S : Solver.S) = struct
              "module Hello = { def main = if 1 then 1 else 2 }"
              [
                [
-                 Text ("Expected if-condition to be type: " ^ Type.show Bool);
-                 Text ("But got type: " ^ Type.show Int);
+                 Text
+                   ("Expected if-condition to be type: " ^ Type.show_mono Bool);
+                 Text ("But got type: " ^ Type.show_mono Int);
                ];
              ];
            test_failure "if expression branch-mismatch"
@@ -194,8 +192,8 @@ module Mono (S : Solver.S) = struct
              [
                [
                  Text "If branches must have the same type";
-                 Text ("then-branch has type: " ^ Type.show Int);
-                 Text ("but else-branch has type: " ^ Type.show Bool);
+                 Text ("then-branch has type: " ^ Type.show_mono Int);
+                 Text ("but else-branch has type: " ^ Type.show_mono Bool);
                ];
              ];
            test_failure "cannot apply to non-function"
@@ -209,8 +207,8 @@ module Mono (S : Solver.S) = struct
              [
                [
                  Text "Wrong argument type";
-                 Text ("Expected: " ^ Type.show Int);
-                 Text ("But got: " ^ Type.show Bool);
+                 Text ("Expected: " ^ Type.show_mono Int);
+                 Text ("But got: " ^ Type.show_mono Bool);
                ];
              ];
            test_failure "wrong annotatated expression"
@@ -218,8 +216,8 @@ module Mono (S : Solver.S) = struct
              [
                [
                  Text "Type mismatch";
-                 Text ("Expected: " ^ Type.show Bool);
-                 Text ("But got: " ^ Type.show Int);
+                 Text ("Expected: " ^ Type.show_mono Bool);
+                 Text ("But got: " ^ Type.show_mono Int);
                ];
              ];
          ]
@@ -240,13 +238,7 @@ module Poly (S : Solver.S) = struct
              (TyCtx.of_list
                 [
                   ( "identity",
-                    Type.Forall
-                      {
-                        ty_vars = [ "t0" ];
-                        type_ =
-                          Type.Arrow
-                            { from = Type.Var "t0"; to_ = Type.Var "t0" };
-                      } );
+                    Type.(Poly ([ "t0" ], Arrow (Var "t0", Var "t0"))) );
                 ]);
            test_solver "apply polymorphic function"
              "module Hello = {
@@ -260,14 +252,8 @@ module Poly (S : Solver.S) = struct
              (TyCtx.of_list
                 [
                   ( "identity",
-                    Type.Forall
-                      {
-                        ty_vars = [ "t0" ];
-                        type_ =
-                          Type.Arrow
-                            { from = Type.Var "t0"; to_ = Type.Var "t0" };
-                      } );
-                  ("main", Type.Int);
+                    Type.(Poly ([ "t0" ], Arrow (Var "t0", Var "t0"))) );
+                  ("main", Type.(Mono Int));
                 ]);
            (* TODO: fresh variable should not mix with explicitly annotated type variables *)
            test_solver "apply annotated polymorphic function"
@@ -281,14 +267,8 @@ module Poly (S : Solver.S) = struct
             }"
              (TyCtx.of_list
                 [
-                  ( "identity",
-                    Type.Forall
-                      {
-                        ty_vars = [ "a" ];
-                        type_ =
-                          Type.Arrow { from = Type.Var "a"; to_ = Type.Var "a" };
-                      } );
-                  ("main", Type.Int);
+                  ("identity", Type.(Poly ([ "a" ], Arrow (Var "a", Var "a"))));
+                  ("main", Type.(Mono Int));
                 ]);
          ]
 end

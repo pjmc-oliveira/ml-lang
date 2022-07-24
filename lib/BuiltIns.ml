@@ -40,9 +40,9 @@ let tm_ctx =
 let ty_ctx =
   TyCtx.of_list
     [
-      ("add", Type.Arrow { from = Int; to_ = Arrow { from = Int; to_ = Int } });
-      ("sub", Type.Arrow { from = Int; to_ = Arrow { from = Int; to_ = Int } });
-      ("mul", Type.Arrow { from = Int; to_ = Arrow { from = Int; to_ = Int } });
-      ("div", Type.Arrow { from = Int; to_ = Arrow { from = Int; to_ = Int } });
-      ("eq", Type.Arrow { from = Int; to_ = Arrow { from = Int; to_ = Bool } });
+      ("add", Type.(Mono (Arrow (Int, Arrow (Int, Int)))));
+      ("sub", Type.(Mono (Arrow (Int, Arrow (Int, Int)))));
+      ("mul", Type.(Mono (Arrow (Int, Arrow (Int, Int)))));
+      ("div", Type.(Mono (Arrow (Int, Arrow (Int, Int)))));
+      ("eq", Type.(Mono (Arrow (Int, Arrow (Int, Bool)))));
     ]

@@ -11,6 +11,7 @@ let interpret_module ?(entrypoint = "main") ?(tm_ctx = TmCtx.empty)
   let* tks = Lexer.tokens src in
   let* m = Parser.(parse module_ tks) in
   let* m = Solver.module_ m ty_ctx in
+  (* let* m = HindleyMilner.module_ m ty_ctx in *)
   let* value = Interpreter.run ~entrypoint ~context:tm_ctx m in
   Ok value
 
@@ -168,7 +169,7 @@ let suite =
           in
           let ty_ctx =
             TyCtx.union BuiltIns.ty_ctx
-              (TyCtx.of_list [ ("exit", Type.Arrow { from = Int; to_ = Int }) ])
+              (TyCtx.of_list [ ("exit", Type.(Mono (Arrow (Int, Int)))) ])
           in
           test_interpreter ~tm_ctx ~ty_ctx "non-strict function application"
             "module Hello = {
