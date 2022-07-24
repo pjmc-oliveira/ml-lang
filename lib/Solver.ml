@@ -10,6 +10,11 @@ type module_ = Syn.Cst.modu
 type constraints = (Type.t * Type.t * Error.t option) list
 type subst = (string * Type.t) list
 
+module type S = sig
+  val module_ : module_ -> ty_ctx -> (Syn.Tast.modu, Error.t list) result
+  val solve_module : module_ -> ty_ctx -> (ty_ctx, Error.t list) result
+end
+
 module S = StateResult
 open S.Syntax
 

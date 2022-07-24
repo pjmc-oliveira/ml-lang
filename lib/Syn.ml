@@ -1,5 +1,7 @@
 type void = []
 
+let pp_void (_fmt : Format.formatter) (_void : void) = ()
+
 module type Ext = sig
   (* Type extensions *)
   type xty
@@ -212,7 +214,7 @@ end
 
 module Tast = Make (struct
   (* Type extensions *)
-  type xty = Type.t * Source.Span.t [@@deriving show]
+  type xty = void [@@deriving show]
 
   (* Expr extensions *)
   type ('e, 't) lit = Type.t * Source.Span.t [@@deriving show]
@@ -223,15 +225,7 @@ module Tast = Make (struct
   (* type information  from [param_t] to [body_t]*)
   type ('e, 't) lam = Type.t * Type.t * Source.Span.t [@@deriving show]
   type ('e, 't) app = Type.t * Source.Span.t [@@deriving show]
-  type ('e, 't) ext = void
-
-  let pp_ext :
-      (Format.formatter -> 'e -> unit) ->
-      (Format.formatter -> 't -> unit) ->
-      Format.formatter ->
-      ('e, 't) ext ->
-      unit =
-   fun _pp_e _pp_t _fmt _expr -> ()
+  type ('e, 't) ext = void [@@deriving show]
 
   (* Bindings and Module *)
   type 't def = Type.t * Source.Span.t [@@deriving show]
