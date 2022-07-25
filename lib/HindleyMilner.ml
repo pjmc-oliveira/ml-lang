@@ -212,8 +212,6 @@ let unify_scheme (original : Type.poly) (inferred : Type.poly) :
         |> List.map (fun (inf, og) -> (inf, Type.Var og))
       in
       let ty'' = apply subst ty' in
-      print_endline (Type.show_poly original);
-      print_endline (Type.show_mono ty'');
       let* _ = S.guard (ty = ty'') (type_mismatch_poly original inferred) in
       pure original
   | Poly (_, _), Mono _ -> fail (type_mismatch_poly original inferred)
