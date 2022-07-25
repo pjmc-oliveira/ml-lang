@@ -1,12 +1,13 @@
 module TmCtx = Ctx.Make (String)
+module Tast = Syn.Tast
 
 type t =
   | Int of int
   | Bool of bool
-  | Closure of { ctx : t TmCtx.t; param : string; body : Syn.Tast.expr }
-  | Thunk of { ctx : t TmCtx.t; expr : Syn.Tast.expr }
+  | Closure of { ctx : t TmCtx.t; param : string; body : Tast.expr }
+  | Thunk of { ctx : t TmCtx.t; expr : Tast.expr }
   | Native of (t -> t)
-  | Fix of { ctx : t TmCtx.t; name : string; expr : Syn.Tast.expr }
+  | Fix of { ctx : t TmCtx.t; name : string; expr : Tast.expr }
 
 let show = function
   | Int n -> string_of_int n

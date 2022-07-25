@@ -1,17 +1,14 @@
 open Extensions
 module TyCtx = Ctx.Make (String)
 module StrSet = Set.Make (String)
+module Cst = Syn.Cst
+module Tast = Syn.Tast
 
 type ty_ctx = Type.poly TyCtx.t
-type ty = Syn.Cst.ty
-type scheme = Syn.Cst.scheme
-type expr = Syn.Cst.expr
-type binding = Syn.Cst.bind
-type module_ = Syn.Cst.modu
 
 module type S = sig
-  val module_ : module_ -> ty_ctx -> (Syn.Tast.modu, Error.t list) result
-  val solve_module : module_ -> ty_ctx -> (ty_ctx, Error.t list) result
+  val module_ : Cst.modu -> ty_ctx -> (Tast.modu, Error.t list) result
+  val solve_module : Cst.modu -> ty_ctx -> (ty_ctx, Error.t list) result
 end
 
 type constraints = (Type.mono * Type.mono * Error.t option) list
@@ -102,7 +99,7 @@ let assert_equal ?span exprected_t actual_t : (constraints, Error.t) t =
   | Type.Var _, _ | _, Type.Var _ -> pure [ (exprected_t, actual_t, Some err) ]
   | _, _ -> fail err
 
-let rec solve_type (ty : ty) : (Type.mono, Error.t) t =
+let rec solve_type (ty : Cst.ty) : (Type.mono, Error.t) t =
   match ty with
   | TCon (_, name) -> (
       match name with
@@ -115,7 +112,7 @@ let rec solve_type (ty : ty) : (Type.mono, Error.t) t =
       let* to_ = solve_type to_ in
       pure (Type.Arrow (from, to_))
 
-let solve_scheme (ty : scheme) : (Type.poly, Error.t) t =
+let solve_scheme (ty : Cst.scheme) : (Type.poly, Error.t) t =
   let open S.Syntax in
   match ty with
   | TForall (_, ty_vars, ty) ->
@@ -193,9 +190,9 @@ let rec solve_constraints (cs : constraints) : (subst, Error.t) t =
                    ])
           | Some err -> fail err))
 
-let rec infer (e : expr) (ctx : ty_ctx) :
-    (Syn.Tast.expr * Type.mono * constraints, Error.t) t =
-  let open Syn.Tast in
+let rec infer (e : Cst.expr) (ctx : ty_ctx) :
+    (Tast.expr * Type.mono * constraints, Error.t) t =
+  let open Tast in
   match e with
   | ELit (span, Int value) ->
       let type_ = Type.Int in
@@ -272,9 +269,9 @@ let rec infer (e : expr) (ctx : ty_ctx) :
       let* expr, c1 = check expr type_ ctx in
       pure (expr, type_, c1)
 
-and check (e : expr) (expected_t : Type.mono) (ctx : ty_ctx) :
-    (Syn.Tast.expr * constraints, Error.t) t =
-  let open Syn.Tast in
+and check (e : Cst.expr) (expected_t : Type.mono) (ctx : ty_ctx) :
+    (Tast.expr * constraints, Error.t) t =
+  let open Tast in
   match e with
   | ELit (span, Int value) ->
       let* _ = assert_equal expected_t Int in
@@ -338,8 +335,8 @@ and check (e : expr) (expected_t : Type.mono) (ctx : ty_ctx) :
       let* expr, c1 = check expr type_ ctx in
       pure (expr, c1)
 
-and infer_check_let (name : string) (expr : expr) (ty : ty option)
-    (ctx : ty_ctx) : (Syn.Tast.expr * Type.mono * constraints, Error.t) t =
+and infer_check_let (name : string) (expr : Cst.expr) (ty : Cst.ty option)
+    (ctx : ty_ctx) : (Tast.expr * Type.mono * constraints, Error.t) t =
   match ty with
   | None -> infer expr ctx
   | Some ty ->
@@ -348,9 +345,8 @@ and infer_check_let (name : string) (expr : expr) (ty : ty option)
       let* expr, c1 = check expr ty ctx' in
       pure (expr, ty, c1)
 
-let binding (ctx : ty_ctx) (b : binding) :
-    (Syn.Tast.bind * Type.poly, Error.t) t =
-  let open Syn.Tast in
+let binding (ctx : ty_ctx) (b : Cst.bind) : (Tast.bind * Type.poly, Error.t) t =
+  let open Tast in
   match b with
   | Def ((span, ann), name, expr) -> (
       match ann with
@@ -367,8 +363,8 @@ let binding (ctx : ty_ctx) (b : binding) :
           let type_ = generalize type_ in
           pure (Def ((type_, span), name, expr), type_))
 
-let rec multiple_passes (previous : int) (bindings : binding list)
-    (ctx : ty_ctx) : (Syn.Tast.bind list, Error.t list) t =
+let rec multiple_passes (previous : int) (bindings : Cst.bind list)
+    (ctx : ty_ctx) : (Tast.bind list, Error.t list) t =
   let rec loop errs oks bs ctx =
     match bs with
     | [] ->
@@ -392,21 +388,20 @@ let rec multiple_passes (previous : int) (bindings : binding list)
   in
   loop [] [] bindings ctx
 
-let module_ (m : module_) (ctx : ty_ctx) : (Syn.Tast.modu, Error.t list) result
-    =
-  let open Syn.Tast in
+let module_ (m : Cst.modu) (ctx : ty_ctx) : (Tast.modu, Error.t list) result =
+  let open Tast in
   match m with
   | Module (span, name, bindings) -> (
       match multiple_passes (List.length bindings) bindings ctx 0 with
       | Ok (bindings, _s) -> Ok (Module (span, name, bindings))
       | Error es -> Error es)
 
-let solve_module (m : module_) (ctx : ty_ctx) : (ty_ctx, Error.t list) result =
+let solve_module (m : Cst.modu) (ctx : ty_ctx) : (ty_ctx, Error.t list) result =
   let open Result.Syntax in
   let insert_to_ctx ctx (name, ty) = TyCtx.insert name ty ctx in
   let type_of_binding b =
     match b with
-    | Syn.Tast.Def ((type_, _), name, _) -> (name, type_)
+    | Tast.Def ((type_, _), name, _) -> (name, type_)
   in
   let* m = module_ m ctx in
   match m with

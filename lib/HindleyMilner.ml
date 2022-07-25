@@ -299,7 +299,7 @@ let solve_module (m : Cst.modu) (ctx : ty_ctx) : (ty_ctx, Error.t list) result =
   let insert_to_ctx ctx (name, ty) = TyCtx.insert name ty ctx in
   let type_of_binding b =
     match b with
-    | Syn.Tast.Def ((type_, _), name, _) -> (name, type_)
+    | Tast.Def ((type_, _), name, _) -> (name, type_)
   in
   let* m = module_ m ctx in
   match m with

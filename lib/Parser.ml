@@ -199,54 +199,49 @@ end
 open Combinator
 open Combinator.Syntax
 open Combinator.Infix
-
-type ty = Syn.Cst.ty
-type scheme = Syn.Cst.scheme
-type expr = Syn.Cst.expr
-type binding = Syn.Cst.bind
-type module_ = Syn.Cst.modu
+module Cst = Syn.Cst
 
 let toplevel =
   let* () = drop_until (fun t -> t = Def) in
   pure ()
 
-let rec type_ () : ty t =
+let rec type_ () : Cst.ty t =
   with_span
     (let* from = type_atom () in
      one_of
        (error [ Text "Expected type" ])
        [
          (let* to_ = accept Arrow *> type_ () in
-          pure (fun span -> Syn.Cst.TArr (span, from, to_)));
+          pure (fun span -> Cst.TArr (span, from, to_)));
          pure (fun _ -> from);
        ])
 
-and type_scheme () : scheme t =
+and type_atom () =
+  with_span
+    (let* tk = token in
+     match tk with
+     | UpperIdent name -> pure (fun span -> Cst.TCon (span, name))
+     | LowerIdent name -> pure (fun span -> Cst.TVar (span, name))
+     | LeftParen ->
+         let* expr = type_ () in
+         let* _ = expect RightParen in
+         pure (fun span -> Cst.map_ty (fun _ -> span) expr)
+     | _ -> fail_lines [ Text "Expected type atom" ])
+
+let type_scheme () : Cst.scheme t =
   with_span
     (let* ty_vars =
        optional (accept Forall *> some lower_identifier <* expect Dot)
      in
      let* ty = type_ () in
      match ty_vars with
-     | None -> pure (fun _ -> Syn.Cst.TMono ty)
-     | Some ty_vars -> pure (fun span -> Syn.Cst.TForall (span, ty_vars, ty)))
+     | None -> pure (fun _ -> Cst.TMono ty)
+     | Some ty_vars -> pure (fun span -> Cst.TForall (span, ty_vars, ty)))
 
-and type_atom () : ty t =
-  with_span
-    (let* tk = token in
-     match tk with
-     | UpperIdent name -> pure (fun span -> Syn.Cst.TCon (span, name))
-     | LowerIdent name -> pure (fun span -> Syn.Cst.TVar (span, name))
-     | LeftParen ->
-         let* expr = type_ () in
-         let* _ = expect RightParen in
-         pure (fun span -> Syn.Cst.map_ty (fun _ -> span) expr)
-     | _ -> fail_lines [ Text "Expected type atom" ])
-
-let rec expression () : expr t =
+let rec expression () : Cst.expr t =
   one_of
     (error [ Text "Expected expression" ])
-    [ let_in (); it_then_else (); lambda (); annotation () ]
+    [ let_in (); if_then_else (); lambda (); annotation () ]
 
 and let_in () =
   with_span
@@ -257,9 +252,9 @@ and let_in () =
      let* def = expression () in
      let* _ = expect In in
      let* body = expression () in
-     pure (fun span -> Syn.Cst.ELet ((span, def_t), name, def, body)))
+     pure (fun span -> Cst.ELet ((span, def_t), name, def, body)))
 
-and it_then_else () =
+and if_then_else () =
   with_span
     (let* _ = accept If in
      let* cond = expression () in
@@ -267,7 +262,7 @@ and it_then_else () =
      let* con = expression () in
      let* _ = expect Else in
      let* alt = expression () in
-     pure (fun span -> Syn.Cst.EIf (span, cond, con, alt)))
+     pure (fun span -> Cst.EIf (span, cond, con, alt)))
 
 and lambda () =
   with_span
@@ -275,7 +270,7 @@ and lambda () =
      let* param = lower_identifier in
      let* param_t = optional (accept Colon *> type_ () <* expect Dot) in
      let* body = expression () in
-     pure (fun span -> Syn.Cst.ELam ((span, param_t), param, body)))
+     pure (fun span -> Cst.ELam ((span, param_t), param, body)))
 
 and annotation () =
   with_span
@@ -284,11 +279,11 @@ and annotation () =
        (error [ Text "Expected annotation" ])
        [
          (let* ann = accept Colon *> type_ () in
-          pure (fun span -> Syn.Cst.EExt (`Ann (span, expr, ann))));
+          pure (fun span -> Cst.EExt (`Ann (span, expr, ann))));
          pure (fun _ -> expr);
        ])
 
-and application () : expr t =
+and application () =
   with_span
     (let* func = atom () in
      let* args = many (atom ()) in
@@ -296,38 +291,38 @@ and application () : expr t =
        List.fold_left
          (fun func arg span ->
            let func = func span in
-           Syn.Cst.EApp (span, func, arg))
+           Cst.EApp (span, func, arg))
          (fun _ -> func)
          args
      in
      pure expr)
 
-and atom () : expr t =
+and atom () =
   with_span
     (let* tk = token in
      match tk with
-     | Int value -> pure (fun span -> Syn.Cst.(ELit (span, Int value)))
-     | Bool value -> pure (fun span -> Syn.Cst.(ELit (span, Bool value)))
-     | LowerIdent name -> pure (fun span -> Syn.Cst.EVar (span, name))
+     | Int value -> pure (fun span -> Cst.(ELit (span, Int value)))
+     | Bool value -> pure (fun span -> Cst.(ELit (span, Bool value)))
+     | LowerIdent name -> pure (fun span -> Cst.EVar (span, name))
      | LeftParen ->
          let* expr = expression () in
          let* _ = expect RightParen in
-         pure (fun span -> Syn.Cst.map_expr (fun _ -> span) expr)
+         pure (fun span -> Cst.map_expr (fun _ -> span) expr)
      | _ -> fail_lines [ Text "Expected atom" ])
 
-let def : (Source.span -> binding) t =
+let def : (Source.span -> Cst.bind) t =
   let* () = accept Def in
   let* name = lower_identifier in
   let* ann = optional (accept Colon *> type_scheme ()) in
   let* () = expect Equal in
   let* expr = expression () in
-  pure (fun span -> Syn.Cst.Def ((span, ann), name, expr))
+  pure (fun span -> Cst.Def ((span, ann), name, expr))
 
-let binding : binding t =
+let binding : Cst.bind t =
   let* b, sp = span_of (one_of (error [ Text "Expected binding" ]) [ def ]) in
   pure (b sp)
 
-let module_ : module_ t =
+let module_ : Cst.modu t =
   let parse_module =
     let* () = accept Module in
     let* name = upper_identifier in
@@ -336,7 +331,7 @@ let module_ : module_ t =
     let* bindings = accumulate binding ~recover:toplevel in
     let* () = expect RightBrace in
     let* () = eof in
-    pure (fun span -> Syn.Cst.Module (span, name, bindings))
+    pure (fun span -> Cst.Module (span, name, bindings))
   in
   let* m, sp = span_of parse_module in
   pure (m sp)
