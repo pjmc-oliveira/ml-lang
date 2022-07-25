@@ -5,7 +5,7 @@ module Tast = Syn.Tast
 module Cst = Syn.Cst
 
 type ty_ctx = Type.poly TyCtx.t
-type constraints = (Type.mono * Type.mono) list
+type constraints = (Type.mono * Type.mono * Error.t option) list
 type subst = (string * Type.mono) list
 
 module S = StateResult
@@ -16,6 +16,7 @@ let pure x : ('a, 'e) t = S.pure x
 let fail e : ('a, 'e) t = S.fail e
 let fresh : (string, 'e) t = fun n -> Ok ("t" ^ string_of_int n, n + 1)
 
+(* Error reportinng helpers *)
 let error ?span lines : Error.t =
   { kind = Error.Kind.Solver; location = span; lines }
 
@@ -25,6 +26,43 @@ let unbound_var name span : Error.t =
 let expr_not_a_function _expr span : Error.t =
   error ~span [ Text "Cannot a apply to non-function values" ]
 
+let type_mismatch exprected_t actual_t =
+  error
+    [
+      Text "Type mismatch";
+      Text ("Expected: " ^ Type.show_mono exprected_t);
+      Text ("But got: " ^ Type.show_mono actual_t);
+    ]
+
+let type_mismatch_poly exprected_t actual_t =
+  error
+    [
+      Text "Type mismatch";
+      Text ("Expected: " ^ Type.show_poly exprected_t);
+      Text ("But got: " ^ Type.show_poly actual_t);
+    ]
+
+let if_branch_mismatch con_t alt_t span : Error.t =
+  error ~span
+    [
+      Text "If branches must have the same type";
+      Text ("then-branch has type: " ^ Type.show_mono con_t);
+      Text ("but else-branch has type: " ^ Type.show_mono alt_t);
+    ]
+
+let if_condition_not_bool cond_t span : Error.t =
+  error ~span
+    [
+      Text ("Expected if-condition to be type: " ^ Type.show_mono Bool);
+      Text ("But got type: " ^ Type.show_mono cond_t);
+    ]
+
+let assert_equal exprected_t actual_t : (unit, Error.t) t =
+  match (exprected_t, actual_t) with
+  | _, _ when exprected_t = actual_t -> pure ()
+  | _, _ -> fail (type_mismatch exprected_t actual_t)
+
+(* Resolve syntax types *)
 let rec solve_type (ty : Cst.ty) : (Type.mono, Error.t) t =
   let open S.Syntax in
   match ty with
@@ -49,6 +87,7 @@ let solve_scheme (ty : Cst.scheme) : (Type.poly, Error.t) t =
       let* ty = solve_type ty in
       pure (Type.Mono ty)
 
+(* Constraint solvers *)
 let rec occurs_check (name : string) (ty : Type.mono) : (unit, Error.t) t =
   let open S.Syntax in
   match ty with
@@ -73,13 +112,13 @@ let rec apply_subst (old : string) (new_ : Type.mono) (ty : Type.mono) :
 let apply_subst_to_constraints (name : string) (ty : Type.mono)
     (cs : constraints) : constraints =
   let rewrite = apply_subst name ty in
-  List.map (fun (l, r) -> (rewrite l, rewrite r)) cs
+  List.map (fun (l, r, e) -> (rewrite l, rewrite r, e)) cs
 
 let rec solve_constraints (cs : constraints) : (subst, Error.t) t =
   let open S.Syntax in
   match cs with
   | [] -> pure []
-  | (ty, ty') :: cs' -> (
+  | (ty, ty', e) :: cs' -> (
       match (ty, ty') with
       | Int, Int | Bool, Bool -> solve_constraints cs'
       | Var name, Var name' when name = name' -> solve_constraints cs'
@@ -89,15 +128,18 @@ let rec solve_constraints (cs : constraints) : (subst, Error.t) t =
           let* subs = solve_constraints cs' in
           pure ((name, ty) :: subs)
       | Arrow (t1, t2), Arrow (t1', t2') ->
-          solve_constraints ((t1, t1') :: (t2, t2') :: cs')
-      | ty, ty' ->
-          fail
-            (error
-               [
-                 Text
-                   ("Cannot solve constraint: " ^ Type.show_mono ty ^ " = "
-                  ^ Type.show_mono ty');
-               ]))
+          solve_constraints ((t1, t1', None) :: (t2, t2', None) :: cs')
+      | ty, ty' -> (
+          match e with
+          | None ->
+              fail
+                (error
+                   [
+                     Text
+                       ("Cannot solve constraint: " ^ Type.show_mono ty ^ " = "
+                      ^ Type.show_mono ty');
+                   ])
+          | Some e -> fail e))
 
 let rec apply (ss : subst) (ty : Type.mono) : Type.mono =
   match ss with
@@ -152,6 +194,31 @@ let rec instantiate (ty : Type.poly) : (Type.mono, Error.t) t =
           let new_var = Type.Var name in
           instantiate (Type.Poly (ty_vars', apply_subst ty_var new_var ty)))
 
+let unify_scheme (original : Type.poly) (inferred : Type.poly) :
+    (Type.poly, Error.t) t =
+  let open S.Syntax in
+  match (original, inferred) with
+  | Mono ty, Mono ty' ->
+      let* _ = assert_equal ty ty' in
+      pure (Type.Mono ty)
+  | Poly (ty_vars, ty), Poly (ty_vars', ty') ->
+      let* _ =
+        S.guard
+          (List.length ty_vars = List.length ty_vars')
+          (type_mismatch_poly original inferred)
+      in
+      let subst =
+        List.zip ty_vars' ty_vars
+        |> List.map (fun (inf, og) -> (inf, Type.Var og))
+      in
+      let ty'' = apply subst ty' in
+      print_endline (Type.show_poly original);
+      print_endline (Type.show_mono ty'');
+      let* _ = S.guard (ty = ty'') (type_mismatch_poly original inferred) in
+      pure original
+  | Poly (_, _), Mono _ -> fail (type_mismatch_poly original inferred)
+  | Mono _, Poly (_, _) -> failwith "TODO unify_scheme Mono Poly"
+
 (* Inference *)
 
 let rec infer (e : Cst.expr) (ctx : ty_ctx) :
@@ -177,13 +244,13 @@ let rec infer (e : Cst.expr) (ctx : ty_ctx) :
             let ctx' = TyCtx.insert name (Type.Mono ann) ctx in
             let* def, def_t, c1 = infer def ctx' in
             let ctx'' = TyCtx.insert name (Type.Mono def_t) ctx' in
-            pure (def, ctx'', (ann, def_t) :: c1)
+            pure (def, ctx'', (ann, def_t, None) :: c1)
         | Some ann ->
             let* ann = solve_type ann in
             let ctx' = TyCtx.insert name (Type.Mono ann) ctx in
             let* def, def_t, c1 = infer def ctx' in
             let ctx'' = TyCtx.insert name (Type.Mono def_t) ctx' in
-            pure (def, ctx'', (ann, def_t) :: c1)
+            pure (def, ctx'', (ann, def_t, None) :: c1)
       in
       let* body, body_t, c2 = infer body ctx' in
       pure (Tast.ELet ((body_t, span), name, def, body), body_t, c1 @ c2)
@@ -194,7 +261,10 @@ let rec infer (e : Cst.expr) (ctx : ty_ctx) :
       pure
         ( Tast.EIf ((con_t, span), cond, con, alt),
           con_t,
-          ((cond_t, Type.Bool) :: (con_t, alt_t) :: c1) @ c2 @ c3 )
+          (cond_t, Type.Bool, Some (if_condition_not_bool cond_t span))
+          :: (con_t, alt_t, Some (if_branch_mismatch con_t alt_t span))
+          :: c1
+          @ c2 @ c3 )
   | ELam ((span, None), param, body) ->
       let* tvar = fresh in
       let param_t = Type.Var tvar in
@@ -220,40 +290,42 @@ let rec infer (e : Cst.expr) (ctx : ty_ctx) :
       pure
         ( Tast.EApp ((out_t, span), func, arg),
           out_t,
-          ((func_t, Type.Arrow (arg_t, out_t)) :: c1) @ c2 )
+          ( func_t,
+            Type.Arrow (arg_t, out_t),
+            Some (expr_not_a_function func span) )
+          :: c1
+          @ c2 )
   | EExt (`Ann (_span, expr, ann)) ->
       let* ann = solve_type ann in
       let* expr, ty, c1 = infer expr ctx in
-      pure (expr, ty, (ann, ty) :: c1)
+      pure (expr, ty, (ann, ty, Some (type_mismatch ann ty)) :: c1)
 
 let binding (ctx : ty_ctx) (b : Cst.bind) :
     (Tast.bind * Type.poly * constraints, Error.t) t =
   let open S.Syntax in
   match b with
   | Def ((span, ann), name, expr) ->
-      let* expr, ty, c =
+      let* expr, ty, ann, c =
         match ann with
         | None ->
             let* tvar = fresh in
             let ann = Type.Var tvar in
             let ctx' = TyCtx.insert name (Type.Mono ann) ctx in
             let* expr, ty, c = infer expr ctx' in
-            pure (expr, ty, c)
+            pure (expr, ty, None, c)
         | Some ann ->
             let* ann = solve_scheme ann in
             let ctx' = TyCtx.insert name ann ctx in
             let* expr, ty, c = infer expr ctx' in
-            pure
-              ( expr,
-                ty,
-                ( (match ann with
-                  | Type.Mono ty -> ty
-                  | Type.Poly (_, ty) -> ty),
-                  ty )
-                :: c )
+            pure (expr, ty, Some ann, (Type.get_mono_type ann, ty, None) :: c)
       in
       let* sub = solve_constraints c in
       let ty = generalize (apply sub ty) in
+      let* ty =
+        match ann with
+        | None -> pure ty
+        | Some ann -> unify_scheme ann ty
+      in
       pure (Tast.Def ((ty, span), name, expr), ty, c)
 
 let rec multiple_passes (ctx : ty_ctx) (constraints : constraints)

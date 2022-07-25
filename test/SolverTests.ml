@@ -63,9 +63,11 @@ module Tester (S : Solver.S) = struct
   let test_failure label str ?(initial_ctx = TyCtx.empty) expected_lines =
     label >:: fun _ ->
     let result = solve_module str initial_ctx in
-    assert_equal ~printer:string_of_result_lines
-      ~cmp:ty_ctx_equal_weak (* TODO: Revert this to strong equality *)
-      (Error expected_lines)
+    assert_equal
+      ~printer:string_of_result_lines
+        (* ~cmp:ty_ctx_equal *)
+        (* TODO: Revert this to strong equality *)
+      ~cmp:ty_ctx_equal_weak (Error expected_lines)
       (Result.map_error errors_to_lines result)
 end
 
@@ -270,5 +272,41 @@ module Poly (S : Solver.S) = struct
                   ("identity", Type.(Poly ([ "a" ], Arrow (Var "a", Var "a"))));
                   ("main", Type.(Mono Int));
                 ]);
+           test_solver "infer un-annotated function"
+             "module Hello = {
+              def identity = \\x True
+              def main =
+                if identity True then
+                  1
+                else
+                  2
+            }"
+             (TyCtx.of_list
+                [
+                  ("identity", Type.(Poly ([ "t0" ], Arrow (Var "t0", Bool))));
+                  ("main", Type.(Mono Int));
+                ]);
+           (* Failure *)
+           test_failure "incorrect top-level annotation"
+             "module Hello = {
+              def identity : forall a. a -> a = \\x True
+              def main =
+                if identity True then
+                  1
+                else
+                  2
+            }"
+             [
+               [
+                 Text "Type mismatch";
+                 Text
+                   ("Expected: "
+                   ^ Type.(show_poly (Poly ([ "a" ], Arrow (Var "a", Var "a"))))
+                   );
+                 Text
+                   ("But got: "
+                   ^ Type.(show_poly (Poly ([ "a" ], Arrow (Var "a", Bool)))));
+               ];
+             ];
          ]
 end

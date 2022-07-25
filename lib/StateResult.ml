@@ -27,6 +27,12 @@ let set s : (unit, 's, 'e) t = fun _ -> Ok ((), s)
 let mut f : (unit, 's, 'e) t = fun s -> Ok ((), f s)
 let scope (s : 's) (p : ('a, 's, 'e) t) : ('a, 's, 'e) t = fun _ -> p s
 
+let guard cond err : (unit, 's, 'e) t =
+  if cond then
+    pure ()
+  else
+    fail err
+
 let local (p : ('a, 's, 'e) t) : ('a, 's, 'e) t =
  fun s ->
   match p s with
