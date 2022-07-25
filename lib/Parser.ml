@@ -201,6 +201,7 @@ open Combinator.Syntax
 open Combinator.Infix
 
 type ty = Syn.Cst.ty
+type scheme = Syn.Cst.scheme
 type expr = Syn.Cst.expr
 type binding = Syn.Cst.bind
 type module_ = Syn.Cst.modu
@@ -220,14 +221,14 @@ let rec type_ () : ty t =
          pure (fun _ -> from);
        ])
 
-and type_scheme () : ty t =
+and type_scheme () : scheme t =
   with_span
     (let* ty_vars =
        optional (accept Forall *> some lower_identifier <* expect Dot)
      in
      let* ty = type_ () in
      match ty_vars with
-     | None -> pure (fun _ -> ty)
+     | None -> pure (fun _ -> Syn.Cst.TMono ty)
      | Some ty_vars -> pure (fun span -> Syn.Cst.TForall (span, ty_vars, ty)))
 
 and type_atom () : ty t =

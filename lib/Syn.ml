@@ -85,13 +85,18 @@ module Make (X : Ext) = struct
     | TCon of X.xty * string
     | TVar of X.xty * string
     | TArr of X.xty * ty * ty
-    | TForall of X.xty * string list * ty
+  [@@deriving show]
+
+  type scheme = TMono of ty | TForall of X.xty * string list * ty
   [@@deriving show]
 
   let map_ty f = function
     | TCon (x, name) -> TCon (f x, name)
     | TVar (x, name) -> TVar (f x, name)
     | TArr (x, from, to_) -> TArr (f x, from, to_)
+
+  let map_scheme f = function
+    | TMono ty -> TMono (map_ty f ty)
     | TForall (x, tvars, ty) -> TForall (f x, tvars, ty)
 
   type lit = Int of int | Bool of bool [@@deriving show]
@@ -106,7 +111,7 @@ module Make (X : Ext) = struct
     | EExt of (expr, ty) X.ext
   [@@deriving show]
 
-  type bind = Def of ty X.def * string * expr [@@deriving show]
+  type bind = Def of scheme X.def * string * expr [@@deriving show]
   type modu = Module of X.xmodu * string * bind list [@@deriving show]
 end
 
@@ -165,6 +170,10 @@ module Cst = struct
         let from = ty_to_ast from in
         let to_ = ty_to_ast to_ in
         TArr ((), from, to_)
+
+  let scheme_to_ast (s : scheme) : Ast.scheme =
+    match s with
+    | TMono ty -> TMono (ty_to_ast ty)
     | TForall (_, tvars, ty) ->
         let ty = ty_to_ast ty in
         TForall ((), tvars, ty)
@@ -203,8 +212,8 @@ module Cst = struct
 
   let bind_to_ast (b : bind) : Ast.bind =
     match b with
-    | Def ((_, ty), name, expr) ->
-        Def (Option.map ty_to_ast ty, name, expr_to_ast expr)
+    | Def ((_, scheme), name, expr) ->
+        Def (Option.map scheme_to_ast scheme, name, expr_to_ast expr)
 
   let to_ast (m : modu) : Ast.modu =
     match m with

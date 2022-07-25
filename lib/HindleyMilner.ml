@@ -38,15 +38,14 @@ let rec solve_type (ty : Cst.ty) : (Type.mono, Error.t) t =
       let* from = solve_type from in
       let* to_ = solve_type to_ in
       pure (Type.Arrow (from, to_))
-  | TForall (_, _ty_vars, _type_) -> failwith "TODO solve_type Forall"
 
-let solve_poly_type (ty : Cst.ty) : (Type.poly, Error.t) t =
+let solve_scheme (ty : Cst.scheme) : (Type.poly, Error.t) t =
   let open S.Syntax in
   match ty with
   | TForall (_, ty_vars, ty) ->
       let* ty = solve_type ty in
       pure (Type.Poly (ty_vars, ty))
-  | _ ->
+  | TMono ty ->
       let* ty = solve_type ty in
       pure (Type.Mono ty)
 
@@ -241,7 +240,7 @@ let binding (ctx : ty_ctx) (b : Cst.bind) :
             let* expr, ty, c = infer expr ctx' in
             pure (expr, ty, c)
         | Some ann ->
-            let* ann = solve_poly_type ann in
+            let* ann = solve_scheme ann in
             let ctx' = TyCtx.insert name ann ctx in
             let* expr, ty, c = infer expr ctx' in
             pure

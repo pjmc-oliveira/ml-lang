@@ -4,6 +4,7 @@ module StrSet = Set.Make (String)
 
 type ty_ctx = Type.poly TyCtx.t
 type ty = Syn.Cst.ty
+type scheme = Syn.Cst.scheme
 type expr = Syn.Cst.expr
 type binding = Syn.Cst.bind
 type module_ = Syn.Cst.modu
@@ -113,15 +114,14 @@ let rec solve_type (ty : ty) : (Type.mono, Error.t) t =
       let* from = solve_type from in
       let* to_ = solve_type to_ in
       pure (Type.Arrow (from, to_))
-  | TForall (_, _ty_vars, _type_) -> failwith "TODO solve_type TForall"
 
-let solve_poly_type (ty : ty) : (Type.poly, Error.t) t =
+let solve_scheme (ty : scheme) : (Type.poly, Error.t) t =
   let open S.Syntax in
   match ty with
   | TForall (_, ty_vars, ty) ->
       let* ty = solve_type ty in
       pure (Type.Poly (ty_vars, ty))
-  | _ ->
+  | TMono ty ->
       let* ty = solve_type ty in
       pure (Type.Mono ty)
 
@@ -355,7 +355,7 @@ let binding (ctx : ty_ctx) (b : binding) :
   | Def ((span, ann), name, expr) -> (
       match ann with
       | Some ann ->
-          let* type_ = solve_poly_type ann in
+          let* type_ = solve_scheme ann in
           let ctx' = TyCtx.insert name type_ ctx in
           let* expr, _c1 = check expr (Type.get_mono_type type_) ctx' in
           (* TODO: Solve constraints *)

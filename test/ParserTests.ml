@@ -194,7 +194,10 @@ let ast_tests =
       (Module
          ( (),
            "Hello",
-           [ Def (Some (TCon ((), "Bool")), "hello", ELit ((), Bool true)) ] ));
+           [
+             Def
+               (Some (TMono (TCon ((), "Bool"))), "hello", ELit ((), Bool true));
+           ] ));
     test_parser_ast "top level polymorphic type"
       "module Hello = {
             def const : forall a b. a -> b -> a
@@ -239,10 +242,11 @@ let ast_tests =
            [
              Def
                ( Some
-                   (TArr
-                      ( (),
-                        TCon ((), "Int"),
-                        TArr ((), TCon ((), "Int"), TCon ((), "Int")) )),
+                   (TMono
+                      (TArr
+                         ( (),
+                           TCon ((), "Int"),
+                           TArr ((), TCon ((), "Int"), TCon ((), "Int")) ))),
                  "const",
                  ELam (None, "x", ELam (None, "y", EVar ((), "x"))) );
            ] ));
@@ -254,10 +258,11 @@ let ast_tests =
            [
              Def
                ( Some
-                   (TArr
-                      ( (),
-                        TArr ((), TCon ((), "Int"), TCon ((), "Int")),
-                        TCon ((), "Int") )),
+                   (TMono
+                      (TArr
+                         ( (),
+                           TArr ((), TCon ((), "Int"), TCon ((), "Int")),
+                           TCon ((), "Int") ))),
                  "hello",
                  ELam (None, "f", EApp ((), EVar ((), "f"), ELit ((), Int 1)))
                );
