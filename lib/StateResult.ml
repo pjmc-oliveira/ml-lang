@@ -39,6 +39,18 @@ let local (p : ('a, 's, 'e) t) : ('a, 's, 'e) t =
   | Ok (x, _) -> Ok (x, s)
   | Error e -> Error e
 
+let traverse_list (f : 'a -> ('b, 's, 'e) t) (xs : 'a list) :
+    ('b list, 's, 'e) t =
+  List.fold_right
+    (fun x st s ->
+      match f x s with
+      | Error e -> Error e
+      | Ok (y, s') -> (
+          match st s' with
+          | Error e -> Error e
+          | Ok (ys, s'') -> Ok (y :: ys, s'')))
+    xs (pure [])
+
 module Syntax = struct
   let ( let* ) = bind
   let ( and* ) = prod

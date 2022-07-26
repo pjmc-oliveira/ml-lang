@@ -68,7 +68,6 @@ let rec apply_subst (old : string) (new_ : Type.mono) (ty : Type.mono) :
 let rec instantiate (ty : Type.poly) : (Type.mono, Error.t) t =
   let open S.Syntax in
   match ty with
-  | Mono ty -> pure ty
   | Poly (ty_vars, ty) -> (
       match ty_vars with
       | [] -> pure ty
@@ -120,7 +119,7 @@ let solve_scheme (ty : Cst.scheme) : (Type.poly, Error.t) t =
       pure (Type.Poly (ty_vars, ty))
   | TMono ty ->
       let* ty = solve_type ty in
-      pure (Type.Mono ty)
+      pure (Type.mono ty)
 
 let rec occurs_check (name : string) (ty : Type.mono) : (unit, Error.t) t =
   match ty with
@@ -161,7 +160,7 @@ let rec free_ty_vars (ty : Type.mono) : StrSet.t =
 let generalize (type_ : Type.mono) : Type.poly =
   let ty_vars = List.of_seq (StrSet.to_seq (free_ty_vars type_)) in
   match ty_vars with
-  | [] -> Type.Mono type_
+  | [] -> Type.mono type_
   | _ -> Type.Poly (ty_vars, type_)
 
 let rec solve_constraints (cs : constraints) : (subst, Error.t) t =
@@ -208,7 +207,7 @@ let rec infer (e : Cst.expr) (ctx : ty_ctx) :
       | None -> fail (unbound_var name span))
   | ELet ((span, def_t), name, def, body) ->
       let* def, def_t, c1 = infer_check_let name def def_t ctx in
-      let ctx' = TyCtx.insert name (Type.Mono def_t) ctx in
+      let ctx' = TyCtx.insert name (Type.mono def_t) ctx in
       let* body, type_, c2 = infer body ctx' in
       pure (ELet ((type_, span), name, def, body), type_, c1 @ c2)
   | EIf (span, cond, con, alt) ->
@@ -233,7 +232,7 @@ let rec infer (e : Cst.expr) (ctx : ty_ctx) :
       | None ->
           let* name = fresh in
           let param_t = Type.Var name in
-          let ctx' = TyCtx.insert param (Type.Mono param_t) ctx in
+          let ctx' = TyCtx.insert param (Type.mono param_t) ctx in
           let* body, type_, c1 = infer body ctx' in
           (* TODO: should this be type_? type_ vs body_t *)
           pure
@@ -242,7 +241,7 @@ let rec infer (e : Cst.expr) (ctx : ty_ctx) :
               c1 )
       | Some param_t ->
           let* param_t = solve_type param_t in
-          let ctx' = TyCtx.insert param (Type.Mono param_t) ctx in
+          let ctx' = TyCtx.insert param (Type.mono param_t) ctx in
           let* body, type_, c1 = infer body ctx' in
           (* TODO type vs body_t *)
           pure
@@ -288,7 +287,7 @@ and check (e : Cst.expr) (expected_t : Type.mono) (ctx : ty_ctx) :
       | None -> fail (unbound_var name span))
   | ELet ((span, def_t), name, def, body) ->
       let* def, def_t, c1 = infer_check_let name def def_t ctx in
-      let ctx' = TyCtx.insert name (Type.Mono def_t) ctx in
+      let ctx' = TyCtx.insert name (Type.mono def_t) ctx in
       let* body, c2 = check body expected_t ctx' in
       pure (ELet ((expected_t, span), name, def, body), c1 @ c2)
   | EIf (span, cond, con, alt) ->
@@ -311,11 +310,11 @@ and check (e : Cst.expr) (expected_t : Type.mono) (ctx : ty_ctx) :
           | Some param_t ->
               let* param_t = solve_type param_t in
               let* c1 = assert_equal from param_t in
-              let ctx' = TyCtx.insert param (Type.Mono param_t) ctx in
+              let ctx' = TyCtx.insert param (Type.mono param_t) ctx in
               let* body, c2 = check body to_ ctx' in
               pure (ELam ((param_t, expected_t, span), param, body), c1 @ c2)
           | None ->
-              let ctx' = TyCtx.insert param (Type.Mono from) ctx in
+              let ctx' = TyCtx.insert param (Type.mono from) ctx in
               let* body, c1 = check body to_ ctx' in
               pure (ELam ((from, expected_t, span), param, body), c1))
       | _ ->
@@ -341,7 +340,7 @@ and infer_check_let (name : string) (expr : Cst.expr) (ty : Cst.ty option)
   | None -> infer expr ctx
   | Some ty ->
       let* ty = solve_type ty in
-      let ctx' = TyCtx.insert name (Type.Mono ty) ctx in
+      let ctx' = TyCtx.insert name (Type.mono ty) ctx in
       let* expr, c1 = check expr ty ctx' in
       pure (expr, ty, c1)
 

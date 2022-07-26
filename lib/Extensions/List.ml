@@ -8,3 +8,4 @@ let rec zip_with f xs ys =
   | x :: xs', y :: ys' -> f x y :: zip_with f xs' ys'
 
 let zip xs ys : ('a * 'b) list = zip_with (fun x y -> (x, y)) xs ys
+let singleton x = [ x ]

@@ -16,6 +16,11 @@ let pure x : ('a, 'e) t = S.pure x
 let fail e : ('a, 'e) t = S.fail e
 let fresh : (string, 'e) t = fun n -> Ok ("t" ^ string_of_int n, n + 1)
 
+let fresh_var =
+  S.Syntax.(
+    let* name = fresh in
+    pure (Type.Var name))
+
 (* Error reportinng helpers *)
 let error ?span lines : Error.t =
   { kind = Error.Kind.Solver; location = span; lines }
@@ -23,44 +28,82 @@ let error ?span lines : Error.t =
 let unbound_var name span : Error.t =
   error ~span [ Text ("Unbound variable: " ^ name) ]
 
-let expr_not_a_function _expr span : Error.t =
-  error ~span [ Text "Cannot a apply to non-function values" ]
+module Ctx : sig
+  type t
 
-let type_mismatch exprected_t actual_t =
-  error
-    [
-      Text "Type mismatch";
-      Text ("Expected: " ^ Type.show_mono exprected_t);
-      Text ("But got: " ^ Type.show_mono actual_t);
-    ]
+  val empty : t
+  val of_list : (string * Type.poly) list -> t
+  val to_list : t -> (string * Type.poly) list
+  val insert : string -> Type.poly -> t -> t
+  val lookup : string -> t -> Type.poly option
+  val remove : string -> t -> t
+  val union : t -> t -> t
+  val map : (Type.poly -> Type.poly) -> t -> t
+end = struct
+  module String_map = Map.Make (String)
 
-let type_mismatch_poly exprected_t actual_t =
-  error
-    [
-      Text "Type mismatch";
-      Text ("Expected: " ^ Type.show_poly exprected_t);
-      Text ("But got: " ^ Type.show_poly actual_t);
-    ]
+  type t = Type.poly String_map.t
 
-let if_branch_mismatch con_t alt_t span : Error.t =
-  error ~span
-    [
-      Text "If branches must have the same type";
-      Text ("then-branch has type: " ^ Type.show_mono con_t);
-      Text ("but else-branch has type: " ^ Type.show_mono alt_t);
-    ]
+  let empty = String_map.empty
+  let of_list ls = String_map.of_seq (List.to_seq ls)
+  let to_list ctx = List.of_seq (String_map.to_seq ctx)
+  let insert = String_map.add
+  let lookup = String_map.find_opt
+  let remove = String_map.remove
+  let union ls rs = String_map.union (fun _ l _ -> Some l) ls rs
+  let map = String_map.map
+end
 
-let if_condition_not_bool cond_t span : Error.t =
-  error ~span
-    [
-      Text ("Expected if-condition to be type: " ^ Type.show_mono Bool);
-      Text ("But got type: " ^ Type.show_mono cond_t);
-    ]
+module Subst : sig
+  type t
 
-let assert_equal exprected_t actual_t : (unit, Error.t) t =
-  match (exprected_t, actual_t) with
-  | _, _ when exprected_t = actual_t -> pure ()
-  | _, _ -> fail (type_mismatch exprected_t actual_t)
+  val empty : t
+  val singleton : string -> Type.mono -> t
+  val of_list : (string * Type.mono) list -> t
+  val to_string : t -> string
+  val compose : t -> t -> t
+  val apply : t -> Type.mono -> Type.mono
+  val apply_scheme : t -> Type.poly -> Type.poly
+  val apply_ctx : t -> Ctx.t -> Ctx.t
+  val ( <+> ) : t -> t -> t
+end = struct
+  module String_map = Map.Make (String)
+
+  type t = Type.mono String_map.t
+
+  let empty = String_map.empty
+  let singleton = String_map.singleton
+  let of_list ls = String_map.of_seq (List.to_seq ls)
+
+  let to_string s =
+    "{"
+    ^ String.concat "; "
+        List.(
+          map
+            (fun (var, ty) -> var ^ " -> " ^ Type.show_mono ty)
+            (of_seq (String_map.to_seq s)))
+    ^ "}"
+
+  let rec apply s : Type.mono -> Type.mono = function
+    | Var n -> (
+        match String_map.find_opt n s with
+        | None -> Var n
+        | Some t -> t)
+    | Arrow (t1, t2) -> Arrow (apply s t1, apply s t2)
+    | t -> t
+
+  let apply_scheme s : Type.poly -> Type.poly = function
+    | Poly (vars, t) ->
+        Poly (vars, apply (List.fold_right String_map.remove vars s) t)
+
+  let apply_ctx s ctx = Ctx.map (apply_scheme s) ctx
+
+  let compose s1 s2 =
+    let union ls rs = String_map.(fold add ls rs) in
+    union (String_map.map (apply s1) s2) s1
+
+  let ( <+> ) = compose
+end
 
 (* Resolve syntax types *)
 let rec solve_type (ty : Cst.ty) : (Type.mono, Error.t) t =
@@ -85,61 +128,7 @@ let solve_scheme (ty : Cst.scheme) : (Type.poly, Error.t) t =
       pure (Type.Poly (ty_vars, ty))
   | TMono ty ->
       let* ty = solve_type ty in
-      pure (Type.Mono ty)
-
-(* Constraint solvers *)
-let rec occurs_check (name : string) (ty : Type.mono) : (unit, Error.t) t =
-  let open S.Syntax in
-  match ty with
-  | Var name' when name = name' ->
-      fail (error [ Text ("Failed occurs check: " ^ name) ])
-  | Int | Bool | Var _ -> pure ()
-  | Arrow (from, to_) ->
-      let* _ = occurs_check name from in
-      let* _ = occurs_check name to_ in
-      pure ()
-
-let rec apply_subst (old : string) (new_ : Type.mono) (ty : Type.mono) :
-    Type.mono =
-  match ty with
-  | Var name when name = old -> new_
-  | Int | Bool | Var _ -> ty
-  | Arrow (from, to_) ->
-      let from = apply_subst old new_ from in
-      let to_ = apply_subst old new_ to_ in
-      Arrow (from, to_)
-
-let apply_subst_to_constraints (name : string) (ty : Type.mono)
-    (cs : constraints) : constraints =
-  let rewrite = apply_subst name ty in
-  List.map (fun (l, r, e) -> (rewrite l, rewrite r, e)) cs
-
-let rec solve_constraints (cs : constraints) : (subst, Error.t) t =
-  let open S.Syntax in
-  match cs with
-  | [] -> pure []
-  | (ty, ty', e) :: cs' -> (
-      match (ty, ty') with
-      | Int, Int | Bool, Bool -> solve_constraints cs'
-      | Var name, Var name' when name = name' -> solve_constraints cs'
-      | Var name, ty | ty, Var name ->
-          let* _ = occurs_check name ty in
-          let cs' = apply_subst_to_constraints name ty cs' in
-          let* subs = solve_constraints cs' in
-          pure ((name, ty) :: subs)
-      | Arrow (t1, t2), Arrow (t1', t2') ->
-          solve_constraints ((t1, t1', None) :: (t2, t2', None) :: cs')
-      | ty, ty' -> (
-          match e with
-          | None ->
-              fail
-                (error
-                   [
-                     Text
-                       ("Cannot solve constraint: " ^ Type.show_mono ty ^ " = "
-                      ^ Type.show_mono ty');
-                   ])
-          | Some e -> fail e))
+      pure (Type.Poly ([], ty))
 
 let rec apply (ss : subst) (ty : Type.mono) : Type.mono =
   match ss with
@@ -165,8 +154,8 @@ let rec free_ty_vars (ty : Type.mono) : StrSet.t =
 let generalize (type_ : Type.mono) : Type.poly =
   let ty_vars = List.of_seq (StrSet.to_seq (free_ty_vars type_)) in
   match ty_vars with
-  | [] -> Type.Mono type_
   | _ ->
+      (* TODO: Fix this *)
       let count = ref 0 in
       let subst =
         List.map
@@ -182,186 +171,268 @@ let generalize (type_ : Type.mono) : Type.poly =
       in
       Type.Poly (new_ty_vars, type_)
 
-let rec instantiate (ty : Type.poly) : (Type.mono, Error.t) t =
+let instantiate (ty : Type.poly) : (Type.mono, Error.t) t =
   let open S.Syntax in
-  match ty with
-  | Mono ty -> pure ty
-  | Poly (ty_vars, ty) -> (
-      match ty_vars with
-      | [] -> pure ty
-      | ty_var :: ty_vars' ->
-          let* name = fresh in
-          let new_var = Type.Var name in
-          instantiate (Type.Poly (ty_vars', apply_subst ty_var new_var ty)))
+  let ty_vars, ty =
+    match ty with
+    | Poly (ty_vars, ty) -> (ty_vars, ty)
+  in
+  let* fresh_vars = S.traverse_list (fun _ -> fresh_var) ty_vars in
+  let s = Subst.of_list (List.zip ty_vars fresh_vars) in
+  pure (Subst.apply s ty)
+
+(* Algorithm W *)
+let bind_var name ty =
+  if Type.Var name = ty then
+    pure Subst.empty
+  else
+    let ty_vars = free_ty_vars ty in
+    if StrSet.mem name ty_vars then
+      fail (error [ Text ("Failed occurs check: " ^ name) ])
+    else
+      pure (Subst.singleton name ty)
+
+let rec unify (ty : Type.mono) (ty' : Type.mono) =
+  let open S.Syntax in
+  match (ty, ty') with
+  | Arrow (l, r), Arrow (l', r') ->
+      let* s1 = unify l l' in
+      let r, r' = (Subst.apply s1 r, Subst.apply s1 r') in
+      let* s2 = unify (Subst.apply s1 r) (Subst.apply s1 r') in
+      pure (Subst.compose s1 s2)
+  | Var name, ty | ty, Var name -> bind_var name ty
+  | Int, Int | Bool, Bool -> pure Subst.empty
+  | _, _ ->
+      fail
+        (error
+           [
+             Text
+               ("Cannot unify " ^ Type.show_mono ty ^ " with "
+              ^ Type.show_mono ty');
+           ])
 
 let unify_scheme (original : Type.poly) (inferred : Type.poly) :
-    (Type.poly, Error.t) t =
+    (Subst.t, Error.t) t =
   let open S.Syntax in
   match (original, inferred) with
-  | Mono ty, Mono ty' ->
-      let* _ = assert_equal ty ty' in
-      pure (Type.Mono ty)
-  | Poly (ty_vars, ty), Poly (ty_vars', ty') ->
-      let* _ =
-        S.guard
-          (List.length ty_vars = List.length ty_vars')
-          (type_mismatch_poly original inferred)
-      in
-      let subst =
-        List.zip ty_vars' ty_vars
-        |> List.map (fun (inf, og) -> (inf, Type.Var og))
-      in
-      let ty'' = apply subst ty' in
-      let* _ = S.guard (ty = ty'') (type_mismatch_poly original inferred) in
-      pure original
-  | Poly (_, _), Mono _ -> fail (type_mismatch_poly original inferred)
-  | Mono _, Poly (_, _) -> failwith "TODO unify_scheme Mono Poly"
+  | Poly ([], ty), Poly ([], ty') -> unify ty ty'
+  | Poly (_, _), Poly (_, _) ->
+      let* ty = instantiate original in
+      let* ty' = instantiate inferred in
+      unify ty ty'
 
 (* Inference *)
 
-let rec infer (e : Cst.expr) (ctx : ty_ctx) :
-    (Tast.expr * Type.mono * constraints, Error.t) t =
+let rec infer (e : Cst.expr) (ctx : Ctx.t) :
+    (Tast.expr * Type.mono * Subst.t, Error.t) t =
   let open S.Syntax in
   match e with
   | ELit (span, Int value) ->
-      pure (Tast.ELit ((Int, span), Int value), Type.Int, [])
+      pure (Tast.ELit ((Int, span), Int value), Type.Int, Subst.empty)
   | ELit (span, Bool value) ->
-      pure (Tast.ELit ((Bool, span), Bool value), Type.Bool, [])
+      pure (Tast.ELit ((Bool, span), Bool value), Type.Bool, Subst.empty)
   | EVar (span, name) -> (
-      match TyCtx.lookup name ctx with
+      match Ctx.lookup name ctx with
       | None -> fail (unbound_var name span)
       | Some ty ->
           let* ty = instantiate ty in
-          pure (Tast.EVar ((ty, span), name), ty, []))
-  | ELet ((span, ann), name, def, body) ->
-      let* def, ctx', c1 =
-        match ann with
-        | None ->
-            let* tvar = fresh in
-            let ann = Type.Var tvar in
-            let ctx' = TyCtx.insert name (Type.Mono ann) ctx in
-            let* def, def_t, c1 = infer def ctx' in
-            let ctx'' = TyCtx.insert name (Type.Mono def_t) ctx' in
-            pure (def, ctx'', (ann, def_t, None) :: c1)
-        | Some ann ->
-            let* ann = solve_type ann in
-            let ctx' = TyCtx.insert name (Type.Mono ann) ctx in
-            let* def, def_t, c1 = infer def ctx' in
-            let ctx'' = TyCtx.insert name (Type.Mono def_t) ctx' in
-            pure (def, ctx'', (ann, def_t, None) :: c1)
-      in
-      let* body, body_t, c2 = infer body ctx' in
-      pure (Tast.ELet ((body_t, span), name, def, body), body_t, c1 @ c2)
+          pure (Tast.EVar ((ty, span), name), ty, Subst.empty))
+  | ELet ((span, None), name, def, body) ->
+      (* TODO: is it necessary to remove itself from ctx? *)
+      let ctx' = Ctx.remove name ctx in
+      let* tvar = fresh in
+      let ann_t = Type.Var tvar in
+      let ctx'' = Ctx.insert name (Type.mono ann_t) ctx' in
+      let* def, def_t, s1 = infer def ctx'' in
+      (* TODO: is this needed? *)
+      let def_t = Subst.(apply (singleton tvar def_t) def_t) in
+      (* Don't generalize let-bindings *)
+      let ctx''' = Ctx.insert name (Type.mono def_t) ctx'' in
+      let* body, body_t, s2 = infer body (Subst.apply_ctx s1 ctx''') in
+      pure
+        (Tast.ELet ((body_t, span), name, def, body), body_t, Subst.(s1 <+> s2))
+  | ELet ((span, Some ann_t), name, def, body) ->
+      (* TODO: is it necessary to remove itself from ctx? *)
+      let ctx' = Ctx.remove name ctx in
+      let* ann_t = solve_type ann_t in
+      let ctx'' = Ctx.insert name (Type.mono ann_t) ctx' in
+      let* def, def_t, s1 = infer def ctx'' in
+      let* s2 = unify ann_t def_t in
+      (* Don't generalize let-bindings *)
+      let ctx''' = Ctx.insert name (Type.mono def_t) ctx'' in
+      let* body, body_t, s3 = infer body (Subst.apply_ctx s1 ctx''') in
+      pure
+        ( Tast.ELet ((body_t, span), name, def, body),
+          body_t,
+          Subst.(s1 <+> s2 <+> s3) )
   | EIf (span, cond, con, alt) ->
-      let* cond, cond_t, c1 = infer cond ctx in
-      let* con, con_t, c2 = infer con ctx in
-      let* alt, alt_t, c3 = infer alt ctx in
+      let* cond, cond_t, s1 = infer cond ctx in
+      let* s2 = unify cond_t Type.Bool in
+      let* con, con_t, s3 = infer con ctx in
+      let* alt, alt_t, s4 = infer alt ctx in
+      let* s5 = unify con_t alt_t in
       pure
         ( Tast.EIf ((con_t, span), cond, con, alt),
           con_t,
-          (cond_t, Type.Bool, Some (if_condition_not_bool cond_t span))
-          :: (con_t, alt_t, Some (if_branch_mismatch con_t alt_t span))
-          :: c1
-          @ c2 @ c3 )
+          Subst.(s1 <+> s2 <+> s3 <+> s4 <+> s5) )
   | ELam ((span, None), param, body) ->
-      let* tvar = fresh in
-      let param_t = Type.Var tvar in
-      let ctx' = TyCtx.insert param (Type.Mono param_t) ctx in
-      let* body, body_t, c1 = infer body ctx' in
+      let* param_t = fresh_var in
+      (* TODO: should remove param from ctx first? does it matter? *)
+      let ctx' = Ctx.insert param (Type.mono param_t) ctx in
+      let* body, body_t, s1 = infer body ctx' in
+      let param_t = Subst.apply s1 param_t in
       pure
         ( Tast.ELam ((param_t, body_t, span), param, body),
           Type.Arrow (param_t, body_t),
-          c1 )
-  | ELam ((span, Some ann), param, body) ->
-      let* param_t = solve_type ann in
-      let ctx' = TyCtx.insert param (Type.Mono param_t) ctx in
-      let* body, body_t, c1 = infer body ctx' in
+          s1 )
+  | ELam ((span, Some param_t), param, body) ->
+      let* param_t = solve_type param_t in
+      let ctx' = Ctx.insert param (Type.mono param_t) ctx in
+      let* body, body_t, s1 = infer body ctx' in
       pure
         ( Tast.ELam ((param_t, body_t, span), param, body),
           Type.Arrow (param_t, body_t),
-          c1 )
+          s1 )
   | EApp (span, func, arg) ->
-      let* func, func_t, c1 = infer func ctx in
-      let* arg, arg_t, c2 = infer arg ctx in
-      let* tvar = fresh in
-      let out_t = Type.Var tvar in
+      let* out_t = fresh_var in
+      let* func, func_t, s1 = infer func ctx in
+      let* arg, arg_t, s2 = infer arg (Subst.apply_ctx s1 ctx) in
+      let* s3 = unify (Subst.apply s2 func_t) (Arrow (arg_t, out_t)) in
+      let out_t = Subst.apply s3 out_t in
       pure
-        ( Tast.EApp ((out_t, span), func, arg),
-          out_t,
-          ( func_t,
-            Type.Arrow (arg_t, out_t),
-            Some (expr_not_a_function func span) )
-          :: c1
-          @ c2 )
-  | EExt (`Ann (_span, expr, ann)) ->
-      let* ann = solve_type ann in
-      let* expr, ty, c1 = infer expr ctx in
-      pure (expr, ty, (ann, ty, Some (type_mismatch ann ty)) :: c1)
+        (Tast.EApp ((out_t, span), func, arg), out_t, Subst.(s1 <+> s2 <+> s3))
+  | EExt (`Ann (_span, expr, ann_t)) ->
+      let* ann_t = solve_type ann_t in
+      let* expr, ty, s1 = infer expr ctx in
+      let* s2 = unify ann_t ty in
+      pure (expr, ty, Subst.(s1 <+> s2))
 
-let binding (ctx : ty_ctx) (b : Cst.bind) :
-    (Tast.bind * Type.poly * constraints, Error.t) t =
+let binding (ctx : Ctx.t) (b : Cst.bind) :
+    (Tast.bind * Type.poly * Subst.t, Error.t) t =
   let open S.Syntax in
   match b with
-  | Def ((span, ann), name, expr) ->
-      let* expr, ty, ann, c =
-        match ann with
-        | None ->
-            let* tvar = fresh in
-            let ann = Type.Var tvar in
-            let ctx' = TyCtx.insert name (Type.Mono ann) ctx in
-            let* expr, ty, c = infer expr ctx' in
-            pure (expr, ty, None, c)
-        | Some ann ->
-            let* ann = solve_scheme ann in
-            let ctx' = TyCtx.insert name ann ctx in
-            let* expr, ty, c = infer expr ctx' in
-            pure (expr, ty, Some ann, (Type.get_mono_type ann, ty, None) :: c)
-      in
-      let* sub = solve_constraints c in
-      let ty = generalize (apply sub ty) in
-      let* ty =
-        match ann with
-        | None -> pure ty
-        | Some ann -> unify_scheme ann ty
-      in
-      pure (Tast.Def ((ty, span), name, expr), ty, c)
+  | Def ((span, None), name, expr) ->
+      let ctx' = Ctx.remove name ctx in
+      let* ann_t = fresh_var in
+      let ctx'' = Ctx.insert name (Type.mono ann_t) ctx' in
+      let* expr, expr_t, s1 = infer expr ctx'' in
+      let* s2 = unify (Subst.apply s1 ann_t) expr_t in
+      let ty = generalize expr_t in
+      pure (Tast.Def ((ty, span), name, expr), ty, Subst.(s1 <+> s2))
+  | Def ((span, Some ann_t), name, expr) ->
+      let* ann_t = solve_scheme ann_t in
+      let ctx' = Ctx.remove name ctx in
+      let ctx'' = Ctx.insert name ann_t ctx' in
+      let* expr, expr_t, s1 = infer expr ctx'' in
+      let ty = generalize expr_t in
+      (* let* s2 = unify (ann_t) expr_t in *)
+      pure (Tast.Def ((ty, span), name, expr), ty, s1)
 
-let rec multiple_passes (ctx : ty_ctx) (constraints : constraints)
-    (previous : int) (bindings : Cst.bind list) :
-    (Tast.bind list * constraints, Error.t list) t =
+let infer_binding ctx (b : Cst.bind) =
   let open S.Syntax in
-  let rec loop cs oks errs bs ctx =
-    match bs with
+  match b with
+  | Def ((span, None), name, expr) ->
+      let ctx' = Ctx.remove name ctx in
+      let* ann_t = fresh_var in
+      let ctx'' = Ctx.insert name (Type.mono ann_t) ctx' in
+      let* expr, expr_t, s1 = infer expr ctx'' in
+      let* s2 = unify (Subst.apply s1 ann_t) expr_t in
+      let ty = Subst.apply s2 expr_t in
+      (* let ty = generalize expr_t in *)
+      pure (ty, span, name, expr, Subst.(s1 <+> s2))
+  | Def ((span, Some ann_t), name, expr) ->
+      let* ann_t = solve_scheme ann_t in
+      let ctx' = Ctx.remove name ctx in
+      let ctx'' = Ctx.insert name ann_t ctx' in
+      let* expr, expr_t, s1 = infer expr ctx'' in
+      (* let ty = generalize expr_t in *)
+      (* let* s2 = unify (ann_t) expr_t in *)
+      pure (expr_t, span, name, expr, s1)
+
+let infer_bindings (ctx : Ctx.t) (bindings : Cst.bind list) :
+    (Tast.bind list * Ctx.t, Error.t list) t =
+  let open S.Syntax in
+  let* top_level =
+    bindings
+    |> S.traverse_list (fun (Cst.Def ((_, ann), name, _)) ->
+           match ann with
+           | None ->
+               let* ty = fresh_var in
+               pure (name, Type.mono ty)
+           | Some ann ->
+               let* ty = solve_scheme ann in
+               pure (name, ty))
+    |> S.map_error List.singleton
+  in
+  let top_level = Ctx.of_list top_level in
+  let rec infer_all ctx oks errs subs :
+      Cst.bind list ->
+      ( (Type.mono * Cst.xty * string * Tast.expr) list * Ctx.t * Subst.t,
+        Error.t list )
+      t = function
     | [] ->
         if errs = [] then
-          pure (List.rev oks, cs)
+          pure (List.rev oks, ctx, subs)
         else
-          let current = List.length errs in
-          if current < previous then
-            multiple_passes ctx cs current bindings
-          else
-            fail errs
-    | b :: bs' -> (
-        let* st = S.get in
-        match binding ctx b st with
-        | Ok (((Def (_x, name, _expr) as ok), ty, c), st') ->
-            let ctx' = TyCtx.insert name ty ctx in
-            let* _ = S.set st' in
-            loop (c @ cs) (ok :: oks) errs bs' ctx'
-        | Error err -> loop cs oks (err :: errs) bs' ctx)
+          fail (List.rev errs)
+    | b :: bs -> (
+        fun s ->
+          match infer_binding ctx b s with
+          | Error err -> infer_all ctx oks (err :: errs) subs bs s
+          | Ok ((ty, span, name, expr, new_sub), s') ->
+              let make_sub =
+                match Ctx.lookup name top_level with
+                | None -> pure Subst.empty
+                | Some original ->
+                    S.map_error List.singleton
+                      (unify_scheme original (Type.mono ty))
+              in
+              let new_sub', s'' =
+                match make_sub s' with
+                | Ok (new_sub, s'') -> (new_sub, s'')
+                | Error _ -> (Subst.empty, s')
+              in
+              let new_sub = Subst.(new_sub' <+> new_sub) in
+              let ctx' = Subst.apply_ctx new_sub ctx in
+              let ctx'' = Ctx.insert name (Type.mono ty) ctx' in
+              infer_all ctx''
+                ((ty, span, name, expr) :: oks)
+                errs
+                Subst.(new_sub <+> subs)
+                bs s'')
   in
-  loop constraints [] [] bindings ctx
+
+  let rec generalize_all bs ctx sub =
+    match bs with
+    | [] -> pure ([], ctx)
+    | (ty, span, name, expr) :: bs ->
+        let ty = Subst.apply sub ty in
+        let scheme = generalize ty in
+        let ctx = Ctx.insert name scheme ctx in
+        let* bs, ctx' = generalize_all bs ctx sub in
+        pure (Tast.Def ((scheme, span), name, expr) :: bs, ctx')
+  in
+  let* inferred, ctx', subst =
+    infer_all (Ctx.union top_level ctx) [] [] Subst.empty bindings
+  in
+  let substitions =
+    inferred
+    |> List.filter_map (fun (ty, _, name, _) ->
+           match Ctx.lookup name top_level with
+           | Some Type.(Poly ([], Var tvar)) -> Some (tvar, ty)
+           | _ -> None)
+    |> fun l ->
+    List.fold_right
+      (fun (tvar, ty) s -> Subst.(singleton tvar ty <+> s))
+      l Subst.empty
+  in
+  generalize_all inferred ctx' Subst.(subst <+> substitions)
 
 let module_ (m : Cst.modu) (ctx : ty_ctx) : (Tast.modu, Error.t list) result =
   match m with
   | Module (span, name, bindings) -> (
-      match multiple_passes ctx [] (List.length bindings) bindings 0 with
-      | Ok ((bindings, _constraints), _st) ->
-          let generalize_binding (Tast.Def ((ty, span), name, expr)) =
-            Tast.Def ((ty, span), name, expr)
-          in
-          let bindings = List.map generalize_binding bindings in
-          Ok (Tast.Module (span, name, bindings))
+      match infer_bindings (Ctx.of_list (TyCtx.to_list ctx)) bindings 0 with
+      | Ok ((bindings, _ctx), _st) -> Ok (Tast.Module (span, name, bindings))
       | Error errs -> Error errs)
 
 let solve_module (m : Cst.modu) (ctx : ty_ctx) : (ty_ctx, Error.t list) result =

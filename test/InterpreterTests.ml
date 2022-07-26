@@ -169,7 +169,7 @@ let suite =
           in
           let ty_ctx =
             TyCtx.union BuiltIns.ty_ctx
-              (TyCtx.of_list [ ("exit", Type.(Mono (Arrow (Int, Int)))) ])
+              (TyCtx.of_list [ ("exit", Type.(mono (Arrow (Int, Int)))) ])
           in
           test_interpreter ~tm_ctx ~ty_ctx "non-strict function application"
             "module Hello = {
