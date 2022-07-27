@@ -10,6 +10,7 @@ module type S = sig
   val to_list : 'a t -> (key * 'a) list
   val equal : ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
   val union : 'a t -> 'a t -> 'a t
+  val map : ('a -> 'a) -> 'a t -> 'a t
 end
 
 module type Ord = sig
@@ -35,4 +36,6 @@ module Make (Key : Ord) : S with type key = Key.t = struct
   let union left right =
     (* TODO: Which precedence does this have? *)
     KeyMap.fold insert right left
+
+  let map = KeyMap.map
 end

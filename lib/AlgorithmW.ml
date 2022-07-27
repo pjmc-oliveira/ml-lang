@@ -5,7 +5,6 @@ module Tast = Syn.Tast
 module Cst = Syn.Cst
 
 type ty_ctx = Type.poly TyCtx.t
-type constraints = (Type.mono * Type.mono * Error.t option) list
 type subst = (string * Type.mono) list
 
 module S = StateResult
@@ -401,7 +400,6 @@ let infer_bindings (ctx : Ctx.t) (bindings : Cst.bind list) :
                 Subst.(new_sub <+> subs)
                 bs s'')
   in
-
   let rec generalize_all bs ctx sub =
     match bs with
     | [] -> pure ([], ctx)

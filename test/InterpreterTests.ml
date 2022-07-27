@@ -10,7 +10,7 @@ let interpret_module ?(entrypoint = "main") ?(tm_ctx = TmCtx.empty)
   let src = Source.of_string str in
   let* tks = Lexer.tokens src in
   let* m = Parser.(parse module_ tks) in
-  let* m = Solver.module_ m ty_ctx in
+  let* m = AlgorithmW.module_ m ty_ctx in
   (* let* m = HindleyMilner.module_ m ty_ctx in *)
   let* value = Interpreter.run ~entrypoint ~context:tm_ctx m in
   Ok value
