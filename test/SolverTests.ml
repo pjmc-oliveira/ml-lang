@@ -2,7 +2,7 @@ open OUnit2
 open Ml_lang
 open Extensions
 open Result.Syntax
-module TyCtx = Solver.TyCtx
+module Ctx = Solver.Ctx
 
 let string_of_result r =
   match r with
@@ -12,7 +12,7 @@ let string_of_result r =
           (List.map
              (fun (name, ty) ->
                "( \"" ^ name ^ "\", " ^ Type.show_poly ty ^ " )")
-             (TyCtx.to_list ctx))
+             (Ctx.to_terms_list ctx))
       ^ "]"
   | Error e -> "Error [" ^ String.concat "\n" (List.map Error.to_string e) ^ "]"
 
@@ -28,7 +28,7 @@ let string_of_result_lines (r : (Solver.ty_ctx, Error.Line.t list list) result)
           (List.map
              (fun (name, ty) ->
                "( \"" ^ name ^ "\", " ^ Type.show_poly ty ^ " )")
-             (TyCtx.to_list ctx))
+             (Ctx.to_terms_list ctx))
       ^ "]"
   | Error e ->
       let lines = List.map (List.map Error.Line.show) e in
@@ -37,12 +37,12 @@ let string_of_result_lines (r : (Solver.ty_ctx, Error.Line.t list list) result)
 
 let ty_ctx_equal l r =
   match (l, r) with
-  | Ok l, Ok r -> TyCtx.equal ( = ) l r
+  | Ok l, Ok r -> Ctx.tm_equal ( = ) l r
   | _, _ -> l = r
 
 let ty_ctx_equal_weak l r =
   match (l, r) with
-  | Ok l, Ok r -> TyCtx.equal ( = ) l r
+  | Ok l, Ok r -> Ctx.tm_equal ( = ) l r
   | Error _, Error _ -> true
   | _, _ -> false
 
@@ -54,14 +54,14 @@ module Tester (S : Solver.S) = struct
     let* ctx = S.solve_module m ctx in
     Ok ctx
 
-  let test_solver label str ?(skip = false) ?(initial_ctx = TyCtx.empty)
-      (expected_ctx : Type.poly TyCtx.t) =
+  let test_solver label str ?(skip = false) ?(initial_ctx = Ctx.empty)
+      (expected_ctx : Ctx.t) =
     label >:: fun _ ->
     skip_if skip "Skipped test";
     assert_equal ~printer:string_of_result ~cmp:ty_ctx_equal (Ok expected_ctx)
       (solve_module str initial_ctx)
 
-  let test_failure label str ?(skip = false) ?(initial_ctx = TyCtx.empty)
+  let test_failure label str ?(skip = false) ?(initial_ctx = Ctx.empty)
       expected_lines =
     label >:: fun _ ->
     skip_if skip "Skipped test";
@@ -81,51 +81,51 @@ module Mono (S : Solver.S) = struct
     "Mono Solver"
     >::: [
            (* Successes *)
-           test_solver "empty module" "module Hello = {}" TyCtx.empty;
+           test_solver "empty module" "module Hello = {}" Ctx.empty;
            test_solver "one binding" "module Hello = { def hello = 1 }"
-             (TyCtx.of_list [ ("hello", Type.(mono Int)) ]);
+             (Ctx.of_terms_list [ ("hello", Type.(mono Int)) ]);
            test_solver "two bindings"
              "module Hello = { def hello = 1 def bye = hello }"
-             (TyCtx.of_list
+             (Ctx.of_terms_list
                 [ ("hello", Type.(mono Int)); ("bye", Type.(mono Int)) ]);
            test_solver "boolean literals"
              "module Hello = { def hello = True def bye = False }"
-             (TyCtx.of_list
+             (Ctx.of_terms_list
                 [ ("hello", Type.(mono Bool)); ("bye", Type.(mono Bool)) ]);
            test_solver "top-level define before use"
              "module Hello = { def hello = bye def bye = 1 }"
-             (TyCtx.of_list
+             (Ctx.of_terms_list
                 [ ("hello", Type.(mono Int)); ("bye", Type.(mono Int)) ]);
            test_solver "let expression"
              "module Hello = { def hello = let x = 1 in x }"
-             (TyCtx.of_list [ ("hello", Type.(mono Int)) ]);
+             (Ctx.of_terms_list [ ("hello", Type.(mono Int)) ]);
            test_solver "if expression True"
              "module Hello = { def hello = if True then 1 else 2 }"
-             (TyCtx.of_list [ ("hello", Type.(mono Int)) ]);
+             (Ctx.of_terms_list [ ("hello", Type.(mono Int)) ]);
            test_solver "if expression False"
              "module Hello = { def hello = if False then False else True }"
-             (TyCtx.of_list [ ("hello", Type.(mono Bool)) ]);
+             (Ctx.of_terms_list [ ("hello", Type.(mono Bool)) ]);
            test_solver "lambda expression"
              "module Hello = { def hello = \\x : Int. True }"
-             (TyCtx.of_list [ ("hello", Type.(mono (Arrow (Int, Bool)))) ]);
+             (Ctx.of_terms_list [ ("hello", Type.(mono (Arrow (Int, Bool)))) ]);
            test_solver "lambda expression annotated as a whole"
              "module Hello = { def hello = (\\x x) : Int -> Int }"
-             (TyCtx.of_list [ ("hello", Type.(mono (Arrow (Int, Int)))) ]);
+             (Ctx.of_terms_list [ ("hello", Type.(mono (Arrow (Int, Int)))) ]);
            test_solver "top level function annotation"
              "module Hello = { def hello : Int -> Bool  = \\x False }"
-             (TyCtx.of_list [ ("hello", Type.(mono (Arrow (Int, Bool)))) ]);
+             (Ctx.of_terms_list [ ("hello", Type.(mono (Arrow (Int, Bool)))) ]);
            test_solver "top level recursive value with annotation"
              "module Hello = { def hello : Int  = hello }"
-             (TyCtx.of_list [ ("hello", Type.(mono Int)) ]);
+             (Ctx.of_terms_list [ ("hello", Type.(mono Int)) ]);
            test_solver "annotatated expression"
              "module Hello = { def hello = 1 : Int }"
-             (TyCtx.of_list [ ("hello", Type.(mono Int)) ]);
+             (Ctx.of_terms_list [ ("hello", Type.(mono Int)) ]);
            test_solver "function application"
              "module Hello = {
                 def identity = \\x : Int. x
                 def hello = identity 1
               }"
-             (TyCtx.of_list
+             (Ctx.of_terms_list
                 [
                   ("identity", Type.(mono (Arrow (Int, Int))));
                   ("hello", Type.(mono Int));
@@ -134,13 +134,13 @@ module Mono (S : Solver.S) = struct
              "module Hello = {
                 def hello = (\\x \\y x) True 0
               }"
-             (TyCtx.of_list [ ("hello", Type.(mono Bool)) ]);
+             (Ctx.of_terms_list [ ("hello", Type.(mono Bool)) ]);
            test_solver "nested function application"
              "module Hello = {
                 def identity = \\x : Int. x
                 def hello = identity (identity 1)
               }"
-             (TyCtx.of_list
+             (Ctx.of_terms_list
                 [
                   ("identity", Type.(mono (Arrow (Int, Int))));
                   ("hello", Type.(mono Int));
@@ -150,14 +150,14 @@ module Mono (S : Solver.S) = struct
                 def hello : (Int -> Int) -> Int = \\f
                   f 1
               }"
-             (TyCtx.of_list
+             (Ctx.of_terms_list
                 [ ("hello", Type.(mono (Arrow (Arrow (Int, Int), Type.Int)))) ]);
            test_solver "can solve un-annotated higher order function"
              "module Hello = {
                 def hello = \\f
                   f 1
               }"
-             (TyCtx.of_list
+             (Ctx.of_terms_list
                 [
                   ( "hello",
                     Type.(
@@ -170,9 +170,9 @@ module Mono (S : Solver.S) = struct
                   add x y
                 def main = my_add 1 2
               }"
-             TyCtx.(
+             Ctx.(
                union BuiltIns.ty_ctx
-                 (of_list
+                 (of_terms_list
                     [
                       ("my_add", Type.(mono (Arrow (Int, Arrow (Int, Int)))));
                       ("main", Type.(mono Int));
@@ -188,9 +188,9 @@ module Mono (S : Solver.S) = struct
                   in
                     fact
               }"
-             TyCtx.(
+             Ctx.(
                union BuiltIns.ty_ctx
-                 (of_list [ ("main", Type.(mono (Arrow (Int, Int)))) ]));
+                 (of_terms_list [ ("main", Type.(mono (Arrow (Int, Int)))) ]));
            test_solver ~initial_ctx:BuiltIns.ty_ctx
              "annotated mutually recursive functions"
              "module Hello = {
@@ -206,9 +206,9 @@ module Mono (S : Solver.S) = struct
                   else
                     not (is_even (sub x 1))
               }"
-             TyCtx.(
+             Ctx.(
                union BuiltIns.ty_ctx
-                 (of_list
+                 (of_terms_list
                     [
                       ("is_even", Type.(mono (Arrow (Int, Bool))));
                       ("is_odd", Type.(mono (Arrow (Int, Bool))));
@@ -228,9 +228,9 @@ module Mono (S : Solver.S) = struct
                   else
                     not (is_even (sub x 1))
               }"
-             TyCtx.(
+             Ctx.(
                union BuiltIns.ty_ctx
-                 (of_list
+                 (of_terms_list
                     [
                       ("is_even", Type.(mono (Arrow (Int, Bool))));
                       ("is_odd", Type.(mono (Arrow (Int, Bool))));
@@ -240,15 +240,38 @@ module Mono (S : Solver.S) = struct
                 def ping = ping
                 def pong = pong
               }"
-             (TyCtx.of_list
+             (Ctx.of_terms_list
                 [
                   ("ping", Type.(Poly ([ "t0" ], Var "t0")));
                   ("pong", Type.(Poly ([ "t0" ], Var "t0")));
                 ]);
+           test_solver "custom type definition"
+             "module Hello = {
+                type AType = Wibble | Wobble
+                def wibble = Wibble
+              }"
+             (Ctx.of_terms_list [ ("wibble", Type.(mono (Con "AType"))) ]);
+           test_solver "custom type definition with extra types"
+             "module Hello = {
+                type AType = Wibble | Wobble Int Bool
+                def wobble1 = Wobble 1 True
+                def wobble2 = Wobble
+              }"
+             (Ctx.of_terms_list
+                [
+                  ("wobble1", Type.(mono (Con "AType")));
+                  ( "wobble2",
+                    Type.(mono (Arrow (Int, Arrow (Bool, Con "AType")))) );
+                ]);
+           (* TODO: recursive types *)
+           (* TODO: mutually recursive types *)
+           (* TODO: polymorphic types *)
            (* Failures *)
            test_failure "let expression out-of-scope"
              "module Hello = { def foo = let x = 1 in x def main = x }"
              [ [ Text "Unbound variable: x" ] ];
+           test_failure "unbound constructor" "module Hello = { def foo = Foo }"
+             [ [ Text "Unbound variable: Foo" ] ];
            test_failure "if expression condition-not-bool"
              "module Hello = { def main = if 1 then 1 else 2 }"
              [
@@ -306,7 +329,7 @@ module Poly (S : Solver.S) = struct
              "module Hello = {
               def identity = \\x x
             }"
-             (TyCtx.of_list
+             (Ctx.of_terms_list
                 [
                   ( "identity",
                     Type.(Poly ([ "t0" ], Arrow (Var "t0", Var "t0"))) );
@@ -320,7 +343,7 @@ module Poly (S : Solver.S) = struct
                 else
                   2
             }"
-             (TyCtx.of_list
+             (Ctx.of_terms_list
                 [
                   ( "identity",
                     Type.(Poly ([ "t0" ], Arrow (Var "t0", Var "t0"))) );
@@ -337,7 +360,7 @@ module Poly (S : Solver.S) = struct
                 else
                   2
             }"
-             (TyCtx.of_list
+             (Ctx.of_terms_list
                 [
                   ("identity", Type.(Poly ([ "a" ], Arrow (Var "a", Var "a"))));
                   ("main", Type.(mono Int));
@@ -351,7 +374,7 @@ module Poly (S : Solver.S) = struct
                 else
                   2
             }"
-             (TyCtx.of_list
+             (Ctx.of_terms_list
                 [
                   ("identity", Type.(Poly ([ "t0" ], Arrow (Var "t0", Bool))));
                   ("main", Type.(mono Int));

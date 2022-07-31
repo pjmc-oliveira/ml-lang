@@ -1,4 +1,6 @@
-type mono = Int | Bool | Var of string | Arrow of mono * mono
+type kind = KType [@@deriving show]
+
+type mono = Int | Bool | Con of string | Var of string | Arrow of mono * mono
 [@@deriving show]
 
 type poly = Poly of string list * mono [@@deriving show]

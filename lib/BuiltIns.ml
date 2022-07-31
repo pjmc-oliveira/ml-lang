@@ -1,5 +1,5 @@
 module TmCtx = Ctx.Make (String)
-module TyCtx = Ctx.Make (String)
+module TyCtx = Solver.Ctx
 
 let tm_ctx =
   TmCtx.of_list
@@ -43,7 +43,7 @@ let tm_ctx =
     ]
 
 let ty_ctx =
-  TyCtx.of_list
+  TyCtx.of_terms_list
     [
       ("add", Type.(Poly ([], Arrow (Int, Arrow (Int, Int)))));
       ("sub", Type.(Poly ([], Arrow (Int, Arrow (Int, Int)))));

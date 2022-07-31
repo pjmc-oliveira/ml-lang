@@ -2,11 +2,11 @@ open OUnit2
 open Ml_lang
 open Extensions
 open Result.Syntax
-module TyCtx = Solver.TyCtx
+module TyCtx = Solver.Ctx
 module TmCtx = Interpreter.TmCtx
 
 let interpret_module ?(entrypoint = "main") ?(tm_ctx = TmCtx.empty)
-    ?(ty_ctx = TmCtx.empty) str =
+    ?(ty_ctx = TyCtx.empty) str =
   let src = Source.of_string str in
   let* tks = Lexer.tokens src in
   let* m = Parser.(parse module_ tks) in
@@ -32,13 +32,13 @@ let string_of_result_lines (r : (Value.t, Error.Line.t list list) result) =
       "Error [" ^ String.concat "\n" lines ^ "]"
 
 let test_interpreter label str ?(entrypoint = "main") ?(tm_ctx = TmCtx.empty)
-    ?(ty_ctx = TmCtx.empty) expected =
+    ?(ty_ctx = TyCtx.empty) expected =
   label >:: fun _ ->
   assert_equal ~printer:string_of_result (Ok expected)
     (interpret_module ~entrypoint ~tm_ctx ~ty_ctx str)
 
 let test_failure label str ?(entrypoint = "main") ?(tm_ctx = TmCtx.empty)
-    ?(ty_ctx = TmCtx.empty) (expected : Error.Line.t list list) =
+    ?(ty_ctx = TyCtx.empty) (expected : Error.Line.t list list) =
   label >:: fun _ ->
   let result = interpret_module ~entrypoint ~tm_ctx ~ty_ctx str in
   assert_equal ~printer:string_of_result_lines (Error expected)
@@ -169,7 +169,7 @@ let suite =
           in
           let ty_ctx =
             TyCtx.union BuiltIns.ty_ctx
-              (TyCtx.of_list [ ("exit", Type.(mono (Arrow (Int, Int)))) ])
+              (TyCtx.of_terms_list [ ("exit", Type.(mono (Arrow (Int, Int)))) ])
           in
           test_interpreter ~tm_ctx ~ty_ctx "non-strict function application"
             "module Hello = {

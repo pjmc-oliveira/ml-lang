@@ -31,12 +31,9 @@ type expr =
 [@@deriving show]
 
 type alt = string * ty list [@@deriving show]
-
-type bind =
-  | Def of Source.Span.t * string * scheme option * expr
-  | Type of Source.Span.t * string * alt list
-[@@deriving show]
-
+type tm_def = Source.Span.t * string * scheme option * expr [@@deriving show]
+type ty_def = Source.Span.t * string * alt list [@@deriving show]
+type bind = Def of tm_def | Type of ty_def [@@deriving show]
 type modu = Module of Source.Span.t * string * bind list [@@deriving show]
 
 (* Helpers *)

@@ -1,10 +1,35 @@
 open Extensions
-module TyCtx = Ctx.Make (String)
 module StrMap = Map.Make (String)
 module StrSet = Set.Make (String)
 module StrSCC = SCC.Make (String)
 
-type ty_ctx = Type.poly TyCtx.t
+module Ctx = struct
+  module StrCtx = Ctx.Make (String)
+
+  type t = { types : Type.kind StrCtx.t; terms : Type.poly StrCtx.t }
+
+  let empty = { types = StrCtx.empty; terms = StrCtx.empty }
+  let insert name ty ctx = { ctx with terms = StrCtx.insert name ty ctx.terms }
+  let lookup name ctx = StrCtx.lookup name ctx.terms
+
+  let of_terms_list terms_list =
+    { types = StrCtx.empty; terms = StrCtx.of_list terms_list }
+
+  let of_types_list types_list =
+    { terms = StrCtx.empty; types = StrCtx.of_list types_list }
+
+  let to_terms_list ctx = StrCtx.to_list ctx.terms
+  let tm_equal cmp left right = StrCtx.equal cmp left.terms right.terms
+  let ty_equal cmp left right = StrCtx.equal cmp left.types right.types
+
+  let union left right =
+    {
+      types = StrCtx.union left.types right.types;
+      terms = StrCtx.union left.terms right.terms;
+    }
+end
+
+type ty_ctx = Ctx.t
 type constraints = (Type.mono * Type.mono) list
 type subst = (string * Type.mono) list
 
@@ -133,7 +158,7 @@ module Core = struct
   let constrain ty ty' = tell [ (ty, ty') ]
 
   (** Scope a name and type to an operation *)
-  let scope name ty p = local (TyCtx.insert name (Type.mono ty)) p
+  let scope name ty p = local (Ctx.insert name (Type.mono ty)) p
 
   (** Creates a fresh type variable *)
   let fresh_var =
@@ -146,7 +171,7 @@ module Core = struct
   let rec occurs_check (name : string) (ty : Type.mono) : unit t =
     match ty with
     | Var name' when name = name' -> Report.failed_occurs_check name
-    | Int | Bool | Var _ -> pure ()
+    | Int | Bool | Var _ | Con _ -> pure ()
     | Arrow (from, to_) ->
         let* _ = occurs_check name from in
         let* _ = occurs_check name to_ in
@@ -157,7 +182,7 @@ module Core = struct
       Type.mono =
     match ty with
     | Var name when name = old -> new_
-    | Int | Bool | Var _ -> ty
+    | Int | Bool | Var _ | Con _ -> ty
     | Arrow (from, to_) ->
         let from = substitute old new_ from in
         let to_ = substitute old new_ to_ in
@@ -192,7 +217,7 @@ module Core = struct
     | (name, new_) :: ss' -> (
         match ty with
         | Var name' when name = name' -> apply ss' new_
-        | Int | Bool | Var _ -> apply ss' ty
+        | Int | Bool | Var _ | Con _ -> apply ss' ty
         | Arrow (from, to_) ->
             let from = apply ss from in
             let to_ = apply ss to_ in
@@ -207,7 +232,7 @@ module Core = struct
 
   (** Gets the free type variables of a type *)
   let rec free_ty_vars : Type.mono -> StrSet.t = function
-    | Type.Int | Type.Bool -> StrSet.empty
+    | Type.Int | Type.Bool | Type.Con _ -> StrSet.empty
     | Type.Var name -> StrSet.singleton name
     | Type.Arrow (from, to_) ->
         let from = free_ty_vars from in
@@ -238,13 +263,12 @@ module Core = struct
     | EMatch _ -> failwith "TODO free_vars EMatch"
 
   (** Gets the free terms of an expression, removing terms in the ctx *)
-  let get_free_terms (ctx : ty_ctx) (bindings : Cst.bind list) =
+  let get_free_terms (ctx : ty_ctx) (defs : Cst.tm_def list) =
     let free_terms =
       List.map
         (function
-          | Cst.Def (_, name, _, expr) -> (name, free_vars expr)
-          | Cst.Type _ -> failwith "TODO get_free_terms TyDef")
-        bindings
+          | _, name, _, expr -> (name, free_vars expr))
+        defs
     in
     let list_of_set s = List.of_seq (StrSet.to_seq s) in
     let free_terms =
@@ -253,7 +277,7 @@ module Core = struct
           ( name,
             List.filter
               (fun v ->
-                match TyCtx.lookup v ctx with
+                match Ctx.lookup v ctx with
                 | None -> true
                 | Some _ -> false)
               (list_of_set vars) ))
@@ -296,7 +320,7 @@ module Engine = struct
     | ELit (span, Bool value) -> with_type (ELit (Bool, span, Bool value))
     | EVar (span, name) -> (
         let* ctx = ask in
-        match TyCtx.lookup name ctx with
+        match Ctx.lookup name ctx with
         | None -> Report.unbound_var name span
         | Some ty ->
             let* ty = Core.instantiate ty in
@@ -336,23 +360,23 @@ module Engine = struct
 end
 
 (** Infers the type of a single binding *)
-let infer_binding (b : Cst.bind) : Tast.bind T.t =
+let infer_def (def : Cst.tm_def) : Tast.bind T.t =
   let open T in
   let* ctx = ask in
   let make_constr name ty =
-    match TyCtx.lookup name ctx with
+    match Ctx.lookup name ctx with
     | None -> pure ()
     | Some scheme ->
         let* ty' = Core.instantiate scheme in
         Core.constrain ty ty'
   in
-  match b with
-  | Cst.Def (span, name, None, expr) ->
+  match def with
+  | span, name, None, expr ->
       let* expr_t, expr = Engine.infer expr in
       let* _ = make_constr name expr_t in
       let ty = Core.generalize expr_t in
       pure (Tast.Def (ty, span, name, expr))
-  | Cst.Def (span, name, Some ann, expr) ->
+  | span, name, Some ann, expr ->
       let* ann_t = Resolve.scheme ann in
       let ann_t = Type.get_mono_type ann_t in
       let* expr_t, expr = Engine.infer expr in
@@ -360,32 +384,29 @@ let infer_binding (b : Cst.bind) : Tast.bind T.t =
       let* _ = make_constr name expr_t in
       let ty = Core.generalize expr_t in
       pure (Tast.Def (ty, span, name, expr))
-  | Cst.Type _ -> failwith "TODO infer_binding TyDef"
 
 (** Infers the types of a bind group *)
-let infer_bindings (bindings : Cst.bind list) : Tast.bind list T.t =
+let infer_defs (defs : Cst.tm_def list) : Tast.bind list T.t =
   let open T in
   let* top_level =
-    bindings
-    |> traverse_list (function
-         | Cst.Def (_, name, ann, _) -> (
-             match ann with
-             | None ->
-                 let* ty = Core.fresh_var in
-                 pure (name, Type.mono ty)
-             | Some ann ->
-                 let* ty = Resolve.scheme ann in
-                 pure (name, ty))
-         | Cst.Type _ -> failwith "TODO infer_bindings TyDef")
+    defs
+    |> traverse_list (function _, name, ann, _ ->
+           (match ann with
+           | None ->
+               let* ty = Core.fresh_var in
+               pure (name, Type.mono ty)
+           | Some ann ->
+               let* ty = Resolve.scheme ann in
+               pure (name, ty)))
   in
-  let top_level = TyCtx.of_list top_level in
-  local (TyCtx.union top_level) (accumulate_list infer_binding bindings)
+  let top_level = Ctx.of_terms_list top_level in
+  local (Ctx.union top_level) (accumulate_list infer_def defs)
 
 (** Solves the types of a bind group *)
-let solve_binding_group (ctx : ty_ctx) (bindings : Cst.bind list) =
-  match infer_bindings bindings ctx 0 with
+let solve_def_group (ctx : ty_ctx) (defs : Cst.tm_def list) =
+  match infer_defs defs ctx 0 with
   | Error es -> Error es
-  | Ok (bindings, cs, s) -> (
+  | Ok (defs, cs, s) -> (
       match Core.solve_constraints cs ctx s with
       | Error es -> Error es
       | Ok (subst, _, _s') ->
@@ -402,20 +423,19 @@ let solve_binding_group (ctx : ty_ctx) (bindings : Cst.bind list) =
                        Tast.map_type (Core.apply (subst @ subst')) expr
                      in
                      Tast.Def (scheme, span, name, expr))
-               bindings))
+               defs))
 
 (** Solves all bindings one strongly connected componenent at a time *)
-let solve_bindings (ctx : ty_ctx) (bindings : Cst.bind list) =
-  let free_terms = Core.get_free_terms ctx bindings in
+let solve_defs (ctx : ty_ctx) (defs : Cst.tm_def list) =
+  let free_terms = Core.get_free_terms ctx defs in
   let scc = StrSCC.(run (make free_terms)) in
   let top_level =
     StrMap.of_seq
       (List.to_seq
-         (List.map
+         (List.filter_map
             (function
-              | Cst.Def (_, name, _, _) as bind -> (name, bind)
-              | Cst.Type _ -> failwith "TODO solve_bindings TyDef")
-            bindings))
+              | (_, name, _, _) as bind -> Some (name, bind))
+            defs))
   in
   let groups =
     List.map (List.filter_map (fun name -> StrMap.find_opt name top_level)) scc
@@ -423,13 +443,12 @@ let solve_bindings (ctx : ty_ctx) (bindings : Cst.bind list) =
   let result =
     StateResult.traverse_list
       (fun bs ctx ->
-        match solve_binding_group ctx bs with
+        match solve_def_group ctx bs with
         | Error e -> Error e
         | Ok bs' ->
             let new_ctx =
               List.fold_left
-                (fun ctx (Tast.Def (ty, _, name, _)) ->
-                  TyCtx.insert name ty ctx)
+                (fun ctx (Tast.Def (ty, _, name, _)) -> Ctx.insert name ty ctx)
                 ctx bs'
             in
             Ok (bs', new_ctx))
@@ -439,18 +458,54 @@ let solve_bindings (ctx : ty_ctx) (bindings : Cst.bind list) =
   | Error e -> Error e
   | Ok (bind_bind, _s) -> Ok (List.flatten bind_bind)
 
+let solve_types (ty_defs : Cst.ty_def list) =
+  let open T in
+  (* TODO: infer kind of each type *)
+  let new_types =
+    Ctx.of_types_list
+      (List.map (fun (_, name, _) -> (name, Type.KType)) ty_defs)
+  in
+  let infer_constructor ty_name (alts : Cst.alt list) =
+    accumulate_list
+      (fun (con, tys) ->
+        let* tys = accumulate_list Resolve.ty tys in
+        let con_t =
+          List.fold_right (fun l r -> Type.Arrow (l, r)) tys (Type.Con ty_name)
+        in
+        pure (con, Type.mono con_t))
+      alts
+  in
+  let* new_constructors =
+    accumulate_list (fun (_, name, alts) -> infer_constructor name alts) ty_defs
+  in
+  let new_constructors = List.flatten new_constructors in
+  let new_terms = Ctx.of_terms_list new_constructors in
+  pure (Ctx.union new_types new_terms)
+
 (** Infers the type of a module *)
 let module_ (m : Cst.modu) (ctx : ty_ctx) : (Tast.modu, Error.t list) result =
   let open Result.Syntax in
   match m with
   | Module (span, name, bindings) ->
-      let* bindings = solve_bindings ctx bindings in
+      let defs, tys =
+        List.fold_left
+          (fun (defs, tys) bind ->
+            match bind with
+            | Cst.Def (span, name, scheme, expr) ->
+                ((span, name, scheme, expr) :: defs, tys)
+            | Cst.Type (span, name, alts) -> (defs, (span, name, alts) :: tys))
+          ([], []) bindings
+      in
+      let* ctx', _c, _s = solve_types tys ctx 0 in
+      (* TODO: Precedence? *)
+      let ctx'' = Ctx.union ctx' ctx in
+      let* bindings = solve_defs ctx'' defs in
       Ok (Tast.Module (span, name, bindings))
 
 (** Solves the type of a module *)
 let solve_module (m : Cst.modu) (ctx : ty_ctx) : (ty_ctx, Error.t list) result =
   let open Result.Syntax in
-  let insert_to_ctx ctx (name, ty) = TyCtx.insert name ty ctx in
+  let insert_to_ctx ctx (name, ty) = Ctx.insert name ty ctx in
   let type_of_binding b =
     match b with
     | Tast.Def (type_, _, name, _) -> (name, type_)
