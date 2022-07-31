@@ -116,6 +116,20 @@ module Report = struct
   let unbound_var name span =
     fail [ error ~span [ Text ("Unbound variable: " ^ name) ] ]
 
+  let unbound_constructor name span =
+    fail [ error ~span [ Text ("Unbound constructor: " ^ name) ] ]
+
+  let constructor_arity_mismatch span name expected actual =
+    fail
+      [
+        error ~span
+          [
+            Text ("Arity mismatch for constructor: " ^ name);
+            Text ("Expected " ^ string_of_int expected ^ " variable(s)");
+            Text ("But got " ^ string_of_int actual ^ " variable(s)");
+          ];
+      ]
+
   let unbound_type name span =
     fail [ error ~span [ Text ("Unbound type: " ^ name) ] ]
 
@@ -214,6 +228,7 @@ module Core = struct
         match (ty, ty') with
         | Int, Int | Bool, Bool -> solve_constraints cs
         | Var tv, Var tv' when tv = tv' -> solve_constraints cs
+        | Con name, Con name' when name = name' -> solve_constraints cs
         | Var tv, ty | ty, Var tv ->
             let* _ = occurs_check tv ty in
             let cs = substitute_constraints tv ty cs in
@@ -273,7 +288,20 @@ module Core = struct
         let arg_vars = free_vars arg in
         StrSet.union func_vars arg_vars
     | EAnn (_, expr, _) -> free_vars expr
-    | EMatch _ -> failwith "TODO free_vars EMatch"
+    | EMatch (_, expr, alts) ->
+        let expr_vars = free_vars expr in
+        let alts_vars =
+          List.fold_left
+            (fun s (Cst.PCon (_, vars), case) ->
+              let vars = vars in
+              let case = free_vars case in
+              let alt_vars =
+                List.fold_left (fun s v -> StrSet.remove v s) case vars
+              in
+              StrSet.union s alt_vars)
+            StrSet.empty alts
+        in
+        StrSet.union expr_vars alts_vars
 
   (** Gets the free terms of an expression, removing terms in the ctx *)
   let get_free_terms (ctx : ty_ctx) (defs : Cst.tm_def list) =
@@ -390,7 +418,36 @@ module TyEngine = struct
         let* expr_t, expr = infer expr in
         let* _ = Core.constrain expr_t ann_t in
         with_type expr
-    | EMatch _ -> failwith "TODO infer EMatch"
+    | EMatch (span, expr, alts) ->
+        let* out_t = Core.fresh_var in
+        let* expr_t, expr = infer expr in
+        let* ctx = ask in
+        let* alts =
+          traverse_list
+            (fun (Cst.PCon (head, vars), case) ->
+              match Ctx.lookup head ctx with
+              | None -> Report.unbound_constructor head span
+              | Some scheme ->
+                  let* ty = Core.instantiate scheme in
+                  let arity = Type.get_arity ty in
+                  if not (arity = List.length vars) then
+                    Report.constructor_arity_mismatch span head arity
+                      (List.length vars)
+                  else
+                    let head_t = Type.final_type ty in
+                    let* _ = Core.constrain expr_t head_t in
+                    let ctx' =
+                      Ctx.of_terms_list
+                        (List.zip vars
+                           (List.map Type.mono (Type.split_arrow ty)))
+                    in
+                    local (Ctx.union ctx')
+                      (let* case_t, case = infer case in
+                       let* _ = Core.constrain out_t case_t in
+                       pure (Tast.PCon (head, vars), case)))
+            alts
+        in
+        with_type (EMatch (out_t, span, expr, alts))
 end
 
 (* Terms *)

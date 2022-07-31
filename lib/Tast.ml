@@ -1,4 +1,5 @@
 type lit = Int of int | Bool of bool [@@deriving show]
+type pat = PCon of string * string list [@@deriving show]
 
 type expr =
   | ELit of Type.mono * Source.Span.t * lit
@@ -8,6 +9,7 @@ type expr =
   (* Type of [param] to [body] *)
   | ELam of Type.mono * Type.mono * Source.Span.t * string * expr
   | EApp of Type.mono * Source.Span.t * expr * expr
+  | EMatch of Type.mono * Source.Span.t * expr * (pat * expr) list
 [@@deriving show]
 
 type ty_def =
@@ -45,6 +47,7 @@ let type_of_expr (e : expr) : Type.mono =
   | EIf (ty, _, _, _, _) -> ty
   | ELam (param_t, body_t, _, _, _) -> Type.Arrow (param_t, body_t)
   | EApp (ty, _, _, _) -> ty
+  | EMatch (ty, _, _, _) -> ty
 
 let rec map_type (f : Type.mono -> Type.mono) : expr -> expr = function
   | ELit (ty, span, lit) -> ELit (f ty, span, lit)
@@ -57,3 +60,9 @@ let rec map_type (f : Type.mono -> Type.mono) : expr -> expr = function
       ELam (f param_t, f body_t, span, param, map_type f body)
   | EApp (ty, span, func, arg) ->
       EApp (f ty, span, map_type f func, map_type f arg)
+  | EMatch (ty, span, expr, alts) ->
+      EMatch
+        ( f ty,
+          span,
+          map_type f expr,
+          List.map (fun (pat, case) -> (pat, map_type f case)) alts )

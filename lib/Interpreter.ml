@@ -68,6 +68,7 @@ let rec eval (e : Tast.expr) (ctx : tm_ctx) : (Value.t, Error.t) result =
       | _ ->
           failwith ("Imposible cannot apply to non-function: " ^ Value.show func)
       )
+  | EMatch _ -> failwith "TODO eval EMatch"
 
 and force (v : Value.t) : (Value.t, Error.t) result =
   let open Result.Syntax in

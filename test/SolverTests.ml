@@ -293,8 +293,30 @@ module Mono (S : Solver.S) = struct
                     ("Succ", Type.(mono (Arrow (Con "Nat", Con "Nat"))));
                     ("Zero", Type.(mono (Con "Nat")));
                   ]);
+           test_solver ~initial_ctx:BuiltIns.ty_ctx "match on custom type"
+             "module Hello = {
+                type Nat = Zero | Succ Nat
+                def two = Succ (Succ Zero)
+                def count = \\x
+                  match x with
+                    | Zero -> 0
+                    | Succ y -> add 1 (count y)
+                  end
+              }"
+             Ctx.(
+               union BuiltIns.ty_ctx
+                 (of_list
+                    ~types:[ ("Nat", Type.KType) ]
+                    ~terms:
+                      [
+                        ("two", Type.(mono (Con "Nat")));
+                        ("count", Type.(mono (Arrow (Con "Nat", Int))));
+                        ("Succ", Type.(mono (Arrow (Con "Nat", Con "Nat"))));
+                        ("Zero", Type.(mono (Con "Nat")));
+                      ]));
            (* TODO: mutually recursive types *)
            (* TODO: polymorphic types *)
+           (* TODO: exhaustivity check for match-with *)
            (* Failures *)
            test_failure "let expression out-of-scope"
              "module Hello = { def foo = let x = 1 in x def main = x }"
@@ -347,6 +369,26 @@ module Mono (S : Solver.S) = struct
              "module Hello = {
                 type Maybe = None | Some Int
                 def foo = Some True
+              }"
+             [ (* TODO: Add error message *) ];
+           test_failure "Match pattern with too many variables"
+             "module Hello = {
+                type Nat = Zero | Succ Nat
+                def count =
+                  match Succ Zero with
+                    | Zero -> 0
+                    | Succ x y -> 1
+                  end
+              }"
+             [ (* TODO: Add error message *) ];
+           test_failure "Match pattern with too few variables"
+             "module Hello = {
+                type Nat = Zero | Succ Nat
+                def count =
+                  match Succ Zero with
+                    | Zero -> 0
+                    | Succ -> 1
+                  end
               }"
              [ (* TODO: Add error message *) ];
          ]
