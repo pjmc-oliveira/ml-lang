@@ -56,6 +56,9 @@ let rec eval (e : Tast.expr) (ctx : tm_ctx) : (Value.t, Error.t) result =
       | Closure { ctx = closure_ctx; param; body } ->
           let closure_ctx' = define param arg' closure_ctx in
           eval body closure_ctx'
+      | Con { head; tail } ->
+          (* TODO: there has to be a better way to deal with constructors *)
+          Ok (Con { head; tail = tail @ [ arg' ] })
       | Native func ->
           (* Defer to create a thunk value from the ast
              then force to pass it into the native function *)
@@ -71,6 +74,9 @@ and force (v : Value.t) : (Value.t, Error.t) result =
   match v with
   | Int n -> Ok (Value.Int n)
   | Bool b -> Ok (Value.Bool b)
+  | Con { head; tail } ->
+      let* tail = Result.traverse_list force tail in
+      Ok (Value.Con { head; tail })
   | Closure f -> Ok (Value.Closure f)
   | Thunk { ctx; expr } ->
       let* expr = eval expr ctx in
@@ -81,37 +87,51 @@ and force (v : Value.t) : (Value.t, Error.t) result =
       let* expr = eval expr ctx' in
       force expr
 
-let binding (b : Tast.bind) (ctx : tm_ctx) :
+let term_def (b : Tast.tm_def) (ctx : tm_ctx) :
     (Value.t * tm_ctx, Error.t list) result =
   let open Result.Syntax in
   Result.map_error
     (fun e -> [ e ])
     (match b with
-    | Def (_, _, _name, expr) ->
+    | TmDef { expr; _ } ->
         let* value = eval expr ctx in
         Ok (value, ctx))
 
-let defer_binding (b : Tast.bind) (ctx : tm_ctx) :
+let defer_term_def (tm_def : Tast.tm_def) (ctx : tm_ctx) :
     (Value.t * tm_ctx, Error.t list) result =
-  match b with
-  | Def (_, _, name, expr) ->
+  match tm_def with
+  | TmDef { name; expr; _ } ->
       let fixpoint = fix name expr ctx in
       let ctx' = define name fixpoint ctx in
       Ok (fixpoint, ctx')
 
-let find_entrypoint entrypoint bindings : Tast.bind option =
-  List.find_opt
-    (fun b ->
-      match b with
-      | Tast.Def (_, _, name, _) -> name = entrypoint)
-    bindings
+let find_entrypoint entrypoint tm_defs : Tast.tm_def option =
+  List.find_opt (fun (Tast.TmDef { name; _ }) -> name = entrypoint) tm_defs
+
+let make_type_constructor ((head, _tys) : string * Type.poly) =
+  Value.Con { head; tail = [] }
+
+let add_type_constructors (TyDef { alts; _ } : Tast.ty_def) (ctx : tm_ctx) :
+    tm_ctx =
+  let cons =
+    List.map (fun ((name, _) as alt) -> (name, make_type_constructor alt)) alts
+  in
+  let ctx' = TmCtx.of_list cons in
+  TmCtx.union ctx' ctx
 
 let module_ entrypoint (m : Tast.modu) : Value.t t =
   match m with
-  | Module (span, _name, bindings) ->
-      let* _ = traverse_list defer_binding bindings in
+  | Module { span; terms; types; _ } ->
+      let* ctx = S.get in
+      let ctx' =
+        List.fold_left
+          (fun ctx ty_def -> add_type_constructors ty_def ctx)
+          ctx types
+      in
+      let* _ = S.set ctx' in
+      let* _ = traverse_list defer_term_def terms in
       let* b =
-        match find_entrypoint entrypoint bindings with
+        match find_entrypoint entrypoint terms with
         | Some b -> S.pure b
         | None ->
             S.fail
@@ -120,7 +140,7 @@ let module_ entrypoint (m : Tast.modu) : Value.t t =
                   [ Text ("Unbound entrypoint: " ^ entrypoint) ];
               ]
       in
-      binding b
+      term_def b
 
 let run ?(entrypoint = "main") ?(context = TmCtx.empty) (m : Tast.modu) :
     (Value.t, Error.t list) result =

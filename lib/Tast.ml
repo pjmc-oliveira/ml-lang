@@ -10,8 +10,32 @@ type expr =
   | EApp of Type.mono * Source.Span.t * expr * expr
 [@@deriving show]
 
-type bind = Def of Type.poly * Source.Span.t * string * expr [@@deriving show]
-type modu = Module of Source.Span.t * string * bind list [@@deriving show]
+type ty_def =
+  | TyDef of {
+      span : Source.Span.t;
+      name : string;
+      kind : Type.kind;
+      alts : (string * Type.poly) list;
+    }
+[@@deriving show]
+
+type tm_def =
+  | TmDef of {
+      span : Source.Span.t;
+      name : string;
+      scheme : Type.poly;
+      expr : expr;
+    }
+[@@deriving show]
+
+type modu =
+  | Module of {
+      span : Source.Span.t;
+      name : string;
+      types : ty_def list;
+      terms : tm_def list;
+    }
+[@@deriving show]
 
 let type_of_expr (e : expr) : Type.mono =
   match e with

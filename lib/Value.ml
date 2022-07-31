@@ -3,15 +3,19 @@ module TmCtx = Ctx.Make (String)
 type t =
   | Int of int
   | Bool of bool
+  (* Constructor *)
+  | Con of { head : string; tail : t list }
   | Closure of { ctx : t TmCtx.t; param : string; body : Tast.expr }
   | Thunk of { ctx : t TmCtx.t; expr : Tast.expr }
   | Native of (t -> t)
   | Fix of { ctx : t TmCtx.t; name : string; expr : Tast.expr }
 
-let show = function
+let rec show = function
   | Int n -> string_of_int n
   | Bool true -> "True"
   | Bool false -> "False"
+  | Con { head; tail } ->
+      head ^ " (" ^ String.concat ", " (List.map show tail) ^ ")"
   | Closure _ -> "<closure>"
   | Thunk _ -> "<thunk>"
   | Native _ -> "<native>"

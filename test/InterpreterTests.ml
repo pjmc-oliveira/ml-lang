@@ -179,6 +179,27 @@ let suite =
               def main = const 1 (exit 2)
             }"
             (Int 1));
+         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+           "custom type"
+           "module Hello = {
+              type AType =
+                | Wibble Int Bool
+                | Wobble
+
+              def main = Wibble 1 True
+            }"
+           (Con { head = "Wibble"; tail = [ Int 1; Bool true ] });
+         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+           "wrap constructor in function"
+           "module Hello = {
+              type AType =
+                | Wibble Int Bool
+                | Wobble
+
+              def wibble1 = Wibble 1
+              def main = wibble1 True
+            }"
+           (Con { head = "Wibble"; tail = [ Int 1; Bool true ] });
          (* Failure *)
          test_failure "local scope"
            "module Hello = { def foo = let x = 1 in x def main = x }"

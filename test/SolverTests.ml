@@ -4,16 +4,28 @@ open Extensions
 open Result.Syntax
 module Ctx = Solver.Ctx
 
+(* TODO: pretty print *)
+let string_of_ctx ctx =
+  let terms =
+    String.concat ";\n"
+      (List.map
+         (fun (name, ty) ->
+           "\t\t( \"" ^ name ^ "\", " ^ Type.show_poly ty ^ " )")
+         (Ctx.to_terms_list ctx))
+  in
+  let types =
+    String.concat ";\n"
+      (List.map
+         (fun (name, kind) ->
+           "\t\t( \"" ^ name ^ "\", " ^ Type.show_kind kind ^ " )")
+         (Ctx.to_types_list ctx))
+  in
+  "Ok {\n" ^ "\ttypes = [\n" ^ types ^ "\n\t]\n" ^ "\tterms = [\n" ^ terms
+  ^ "\n\t]\n" ^ "\n}"
+
 let string_of_result r =
   match r with
-  | Ok ctx ->
-      "Ok ["
-      ^ String.concat "; "
-          (List.map
-             (fun (name, ty) ->
-               "( \"" ^ name ^ "\", " ^ Type.show_poly ty ^ " )")
-             (Ctx.to_terms_list ctx))
-      ^ "]"
+  | Ok ctx -> string_of_ctx ctx
   | Error e -> "Error [" ^ String.concat "\n" (List.map Error.to_string e) ^ "]"
 
 let error_to_lines (e : Error.t) : Error.Line.t list = e.lines
@@ -22,14 +34,7 @@ let errors_to_lines es = List.(map error_to_lines es)
 let string_of_result_lines (r : (Solver.ty_ctx, Error.Line.t list list) result)
     =
   match r with
-  | Ok ctx ->
-      "Ok ["
-      ^ String.concat "; "
-          (List.map
-             (fun (name, ty) ->
-               "( \"" ^ name ^ "\", " ^ Type.show_poly ty ^ " )")
-             (Ctx.to_terms_list ctx))
-      ^ "]"
+  | Ok ctx -> string_of_ctx ctx
   | Error e ->
       let lines = List.map (List.map Error.Line.show) e in
       let lines = List.map (String.concat "; ") lines in
@@ -37,12 +42,12 @@ let string_of_result_lines (r : (Solver.ty_ctx, Error.Line.t list list) result)
 
 let ty_ctx_equal l r =
   match (l, r) with
-  | Ok l, Ok r -> Ctx.tm_equal ( = ) l r
+  | Ok l, Ok r -> Ctx.tm_equal ( = ) l r && Ctx.ty_equal ( = ) l r
   | _, _ -> l = r
 
 let ty_ctx_equal_weak l r =
   match (l, r) with
-  | Ok l, Ok r -> Ctx.tm_equal ( = ) l r
+  | Ok l, Ok r -> Ctx.tm_equal ( = ) l r && Ctx.ty_equal ( = ) l r
   | Error _, Error _ -> true
   | _, _ -> false
 
@@ -250,26 +255,44 @@ module Mono (S : Solver.S) = struct
                 type AType = Wibble | Wobble
                 def wibble = Wibble
               }"
-             (Ctx.of_terms_list [ ("wibble", Type.(mono (Con "AType"))) ]);
+             (Ctx.of_list
+                ~types:[ ("AType", Type.KType) ]
+                ~terms:
+                  [
+                    ("wibble", Type.(mono (Con "AType")));
+                    ("Wibble", Type.(mono (Con "AType")));
+                    ("Wobble", Type.(mono (Con "AType")));
+                  ]);
            test_solver "custom type definition with extra types"
              "module Hello = {
                 type AType = Wibble | Wobble Int Bool
                 def wobble1 = Wobble 1 True
                 def wobble2 = Wobble
               }"
-             (Ctx.of_terms_list
-                [
-                  ("wobble1", Type.(mono (Con "AType")));
-                  ( "wobble2",
-                    Type.(mono (Arrow (Int, Arrow (Bool, Con "AType")))) );
-                ]);
+             (Ctx.of_list
+                ~types:[ ("AType", Type.KType) ]
+                ~terms:
+                  [
+                    ("wobble1", Type.(mono (Con "AType")));
+                    ( "wobble2",
+                      Type.(mono (Arrow (Int, Arrow (Bool, Con "AType")))) );
+                    ("Wibble", Type.(mono (Con "AType")));
+                    ( "Wobble",
+                      Type.(mono (Arrow (Int, Arrow (Bool, Con "AType")))) );
+                  ]);
            test_solver "custom recursive type"
              "module Hello = {
                 type Nat = Zero | Succ Nat
                 def add1 = Succ
               }"
-             (Ctx.of_terms_list
-                [ ("add1", Type.(mono (Arrow (Con "Nat", Con "Nat")))) ]);
+             (Ctx.of_list
+                ~types:[ ("Nat", Type.KType) ]
+                ~terms:
+                  [
+                    ("add1", Type.(mono (Arrow (Con "Nat", Con "Nat"))));
+                    ("Succ", Type.(mono (Arrow (Con "Nat", Con "Nat"))));
+                    ("Zero", Type.(mono (Con "Nat")));
+                  ]);
            (* TODO: mutually recursive types *)
            (* TODO: polymorphic types *)
            (* Failures *)

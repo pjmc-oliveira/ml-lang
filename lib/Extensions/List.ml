@@ -9,3 +9,10 @@ let rec zip_with f xs ys =
 
 let zip xs ys : ('a * 'b) list = zip_with (fun x y -> (x, y)) xs ys
 let singleton x = [ x ]
+
+let unzip xys =
+  let rec loop xs ys = function
+    | [] -> (rev xs, rev ys)
+    | (x, y) :: xys -> loop (x :: xs) (y :: ys) xys
+  in
+  loop [] [] xys

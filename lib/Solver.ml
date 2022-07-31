@@ -17,6 +17,9 @@ module Ctx = struct
 
   let lookup_ty name ctx = StrCtx.lookup name ctx.types
 
+  let of_list ~terms ~types =
+    { types = StrCtx.of_list types; terms = StrCtx.of_list terms }
+
   let of_terms_list terms_list =
     { types = StrCtx.empty; terms = StrCtx.of_list terms_list }
 
@@ -24,6 +27,7 @@ module Ctx = struct
     { terms = StrCtx.empty; types = StrCtx.of_list types_list }
 
   let to_terms_list ctx = StrCtx.to_list ctx.terms
+  let to_types_list ctx = StrCtx.to_list ctx.types
   let tm_equal cmp left right = StrCtx.equal cmp left.terms right.terms
   let ty_equal cmp left right = StrCtx.equal cmp left.types right.types
 
@@ -389,8 +393,10 @@ module TyEngine = struct
     | EMatch _ -> failwith "TODO infer EMatch"
 end
 
+(* Terms *)
+
 (** Infers the type of a single binding *)
-let infer_def (def : Cst.tm_def) : Tast.bind T.t =
+let infer_def (def : Cst.tm_def) : Tast.tm_def T.t =
   let open T in
   let* ctx = ask in
   let make_constr name ty =
@@ -404,19 +410,19 @@ let infer_def (def : Cst.tm_def) : Tast.bind T.t =
   | span, name, None, expr ->
       let* expr_t, expr = TyEngine.infer expr in
       let* _ = make_constr name expr_t in
-      let ty = Core.generalize expr_t in
-      pure (Tast.Def (ty, span, name, expr))
+      let scheme = Core.generalize expr_t in
+      pure (Tast.TmDef { scheme; span; name; expr })
   | span, name, Some ann, expr ->
       let* ann_t = Resolve.scheme ann in
       let ann_t = Type.get_mono_type ann_t in
       let* expr_t, expr = TyEngine.infer expr in
       let* _ = Core.constrain ann_t expr_t in
       let* _ = make_constr name expr_t in
-      let ty = Core.generalize expr_t in
-      pure (Tast.Def (ty, span, name, expr))
+      let scheme = Core.generalize expr_t in
+      pure (Tast.TmDef { scheme; span; name; expr })
 
 (** Infers the types of a bind group *)
-let infer_defs (defs : Cst.tm_def list) : Tast.bind list T.t =
+let infer_defs (defs : Cst.tm_def list) : Tast.tm_def list T.t =
   let open T in
   let* top_level =
     defs
@@ -443,16 +449,16 @@ let solve_def_group (ctx : ty_ctx) (defs : Cst.tm_def list) =
           Ok
             (List.map
                (function
-                 | Tast.Def (ty, span, name, expr) ->
+                 | Tast.TmDef { scheme; span; name; expr } ->
                      let scheme =
-                       ty |> Type.get_mono_type |> Core.apply subst
+                       scheme |> Type.get_mono_type |> Core.apply subst
                        |> Core.generalize
                      in
                      let subst', scheme = Core.normalize_scheme scheme in
                      let expr =
                        Tast.map_type (Core.apply (subst @ subst')) expr
                      in
-                     Tast.Def (scheme, span, name, expr))
+                     Tast.TmDef { scheme; span; name; expr })
                defs))
 
 (** Solves all bindings one strongly connected componenent at a time *)
@@ -478,7 +484,8 @@ let solve_defs (ctx : ty_ctx) (defs : Cst.tm_def list) =
         | Ok bs' ->
             let new_ctx =
               List.fold_left
-                (fun ctx (Tast.Def (ty, _, name, _)) -> Ctx.insert name ty ctx)
+                (fun ctx (Tast.TmDef { scheme; name; _ } : Tast.tm_def) ->
+                  Ctx.insert name scheme ctx)
                 ctx bs'
             in
             Ok (bs', new_ctx))
@@ -488,18 +495,27 @@ let solve_defs (ctx : ty_ctx) (defs : Cst.tm_def list) =
   | Error e -> Error e
   | Ok (bind_bind, _s) -> Ok (List.flatten bind_bind)
 
+(* Types *)
+
 let solve_types (ty_defs : Cst.ty_def list) =
   let open T in
   (* TODO: infer kind of each type *)
-  let* new_types = accumulate_list KindEngine.infer_kind ty_defs in
+  let* results =
+    accumulate_list
+      (fun ((span, _, _) as ty_def) ->
+        let* name, kind, alts = KindEngine.infer_kind ty_def in
+        pure ((name, kind, alts), Tast.TyDef { span; name; kind; alts }))
+      ty_defs
+  in
+  let new_types, ty_defs = List.unzip results in
   let types =
     Ctx.of_types_list (List.map (fun (name, kind, _) -> (name, kind)) new_types)
   in
+  let constructors_of_ty_def (TyDef { alts; _ } : Tast.ty_def) = alts in
   let constructors =
-    Ctx.of_terms_list
-      (List.flatten (List.map (fun (_, _, cons) -> cons) new_types))
+    Ctx.of_terms_list (List.flatten (List.map constructors_of_ty_def ty_defs))
   in
-  pure (Ctx.union types constructors)
+  pure (Ctx.union types constructors, ty_defs)
 
 (** Infers the type of a module *)
 let module_ (m : Cst.modu) (ctx : ty_ctx) : (Tast.modu, Error.t list) result =
@@ -515,23 +531,35 @@ let module_ (m : Cst.modu) (ctx : ty_ctx) : (Tast.modu, Error.t list) result =
             | Cst.Type (span, name, alts) -> (defs, (span, name, alts) :: tys))
           ([], []) bindings
       in
-      let* ctx', _c, _s = solve_types tys ctx 0 in
+      let* (ctx', types), _c, _s = solve_types tys ctx 0 in
       (* TODO: Precedence? *)
       let ctx'' = Ctx.union ctx' ctx in
-      let* bindings = solve_defs ctx'' defs in
-      Ok (Tast.Module (span, name, bindings))
+      let* terms = solve_defs ctx'' defs in
+      Ok (Tast.Module { span; name; terms; types })
 
 (** Solves the type of a module *)
 let solve_module (m : Cst.modu) (ctx : ty_ctx) : (ty_ctx, Error.t list) result =
   let open Result.Syntax in
-  let insert_to_ctx ctx (name, ty) = Ctx.insert name ty ctx in
-  let type_of_binding b =
-    match b with
-    | Tast.Def (type_, _, name, _) -> (name, type_)
+  let insert_term_to_ctx ctx (name, ty) = Ctx.insert name ty ctx in
+  let insert_type_to_ctx ctx (name, kind) = Ctx.insert_ty name kind ctx in
+  let type_of_term tm_def =
+    match tm_def with
+    | Tast.TmDef { scheme; name; _ } -> (name, scheme)
+  in
+  let kind_of_type ty_def =
+    match ty_def with
+    | Tast.TyDef { name; kind; _ } -> (name, kind)
+  in
+  let types_of_constructors ty_def =
+    match ty_def with
+    | Tast.TyDef { alts; _ } -> alts
   in
   let* m = module_ m ctx in
   match m with
-  | Module (_span, _name, bindings) ->
-      let bs = List.map type_of_binding bindings in
-      let ctx = List.fold_left insert_to_ctx ctx bs in
+  | Module { terms; types; _ } ->
+      let tms = List.map type_of_term terms in
+      let constructors = List.flatten (List.map types_of_constructors types) in
+      let tys = List.map kind_of_type types in
+      let ctx = List.fold_left insert_term_to_ctx ctx (tms @ constructors) in
+      let ctx = List.fold_left insert_type_to_ctx ctx tys in
       Ok ctx
