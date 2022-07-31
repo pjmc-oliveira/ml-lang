@@ -1,15 +1,26 @@
 module Hello = {
-  def fact : Int -> Int = \x
-    if eq 0 x then
-      1
-    else
-      mul x (fact (sub x 1))
+  def nil =
+    \on_nil : Int .
+    \on_cons : Int -> Int -> Int .
+    on_nil
 
-  def fib : Int -> Int = \x
-    if eq 0 x then
-      1
-    else
-      add (fib (sub x 1)) (fib (sub x 2))
+  def cons =
+    \head : Int .
+    \tail : Int -> (Int -> Int -> Int) -> Int .
+    \on_nil : Int .
+    \on_cons : Int -> Int -> Int .
+    on_cons head (tail on_nil on_cons)
 
-  def main = fib 1
+  def length =
+    \list : Int -> (Int -> Int -> Int) -> Int .
+    list
+      0
+      (\head
+       \tail add 1 tail )
+
+  def identity : forall a. a -> a = \x x
+
+
+
+  def main = length (cons 1 (cons 2 nil))
 }

@@ -1,4 +1,5 @@
 open Ml_lang
+open Extensions
 open Result.Syntax
 
 (* TODO: make this lazy? *)
@@ -22,16 +23,11 @@ let string_of_errors errs =
 
 let lex str =
   let src = Source.of_string str in
-  Result.map_error string_of_errors (Lexer.tokens src)
+  Lexer.tokens src
 
-let parse tks = Result.map_error string_of_errors Parser.(parse module_ tks)
-
-let solve cst =
-  Result.map_error string_of_errors Solver.(module_ cst BuiltIns.ty_ctx)
-
-let interpret tast =
-  Result.map_error string_of_errors
-    (Interpreter.run ~context:BuiltIns.tm_ctx tast)
+let parse tks = Parser.(parse module_ tks)
+let solve cst = Solver.(module_ cst BuiltIns.ty_ctx)
+let interpret tast = Interpreter.run ~context:BuiltIns.tm_ctx tast
 
 let run str =
   let* tks = lex str in
@@ -46,10 +42,4 @@ let report res =
   | Ok value -> "Success:\n" ^ Value.show value
 
 let source = read_lines [ "examples"; "hello.luz" ]
-
-(* TODO *)
-(* let source = "\nmodule Hello = {\n  def = 1 def = 1\n  def bye = 2\n}\n" *)
-
-(* let source = "\nmodule Hello = {}\n" *)
-let () = print_string (report (run source))
-(* let () = Sys.argv |> Array.to_list |> String.concat ", " |> print_string *)
+let () = print_string (report (Result.map_error string_of_errors (run source)))
