@@ -1,17 +1,16 @@
-include Syn.Make (struct
-  (* Type extensions *)
-  type xty = unit [@@deriving show]
+type ty = TCon of string | TVar of string | TArr of ty * ty [@@deriving show]
+type scheme = TMono of ty | TForall of string list * ty [@@deriving show]
+type lit = Int of int | Bool of bool [@@deriving show]
 
-  (* Expr extensions *)
-  type ('e, 't) lit = unit [@@deriving show]
-  type ('e, 't) var = unit [@@deriving show]
-  type ('e, 't) let_ = 't option [@@deriving show]
-  type ('e, 't) if_ = unit [@@deriving show]
-  type ('e, 't) lam = 't option [@@deriving show]
-  type ('e, 't) app = unit [@@deriving show]
-  type ('e, 't) ext = [ `Ann of 'e * 't ] [@@deriving show]
+type expr =
+  | ELit of lit
+  | EVar of string
+  | ELet of ty option * string * expr * expr
+  | EIf of expr * expr * expr
+  | ELam of ty option * string * expr
+  | EApp of expr * expr
+  | EAnn of expr * ty
+[@@deriving show]
 
-  (* Bindings and Module *)
-  type 't def = 't option [@@deriving show]
-  type xmodu = unit [@@deriving show]
-end)
+type bind = Def of scheme option * string * expr [@@deriving show]
+type modu = Module of string * bind list [@@deriving show]
