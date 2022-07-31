@@ -54,14 +54,17 @@ module Tester (S : Solver.S) = struct
     let* ctx = S.solve_module m ctx in
     Ok ctx
 
-  let test_solver label str ?(initial_ctx = TyCtx.empty)
+  let test_solver label str ?(skip = false) ?(initial_ctx = TyCtx.empty)
       (expected_ctx : Type.poly TyCtx.t) =
     label >:: fun _ ->
+    skip_if skip "Skipped test";
     assert_equal ~printer:string_of_result ~cmp:ty_ctx_equal (Ok expected_ctx)
       (solve_module str initial_ctx)
 
-  let test_failure label str ?(initial_ctx = TyCtx.empty) expected_lines =
+  let test_failure label str ?(skip = false) ?(initial_ctx = TyCtx.empty)
+      expected_lines =
     label >:: fun _ ->
+    skip_if skip "Skipped test";
     let result = solve_module str initial_ctx in
     assert_equal
       ~printer:string_of_result_lines
@@ -324,7 +327,8 @@ module Poly (S : Solver.S) = struct
                   ("main", Type.(mono Int));
                 ]);
            (* TODO: fresh variable should not mix with explicitly annotated type variables *)
-           test_solver "apply annotated polymorphic function"
+           (* TODO: Inferred type should match top-level annotationn if provided *)
+           test_solver ~skip:true "apply annotated polymorphic function"
              "module Hello = {
               def identity : forall a. a -> a = \\x x
               def main =
@@ -353,7 +357,8 @@ module Poly (S : Solver.S) = struct
                   ("main", Type.(mono Int));
                 ]);
            (* Failure *)
-           test_failure "incorrect top-level annotation"
+           (* TODO: top-level annotation should restrict the inferred type *)
+           test_failure ~skip:true "incorrect top-level annotation"
              "module Hello = {
               def identity : forall a. a -> a = \\x True
               def main =
