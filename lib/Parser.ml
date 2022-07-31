@@ -251,7 +251,7 @@ and let_in () =
      let* def = expression () in
      let* _ = expect In in
      let* body = expression () in
-     pure (fun span -> Cst.ELet ((span, def_t), name, def, body)))
+     pure (fun span -> Cst.ELet (span, name, def_t, def, body)))
 
 and if_then_else () =
   with_span
@@ -269,7 +269,7 @@ and lambda () =
      let* param = lower_identifier in
      let* param_t = optional (accept Colon *> type_ () <* expect Dot) in
      let* body = expression () in
-     pure (fun span -> Cst.ELam ((span, param_t), param, body)))
+     pure (fun span -> Cst.ELam (span, param, param_t, body)))
 
 and annotation () =
   with_span
@@ -278,7 +278,7 @@ and annotation () =
        (error [ Text "Expected annotation" ])
        [
          (let* ann = accept Colon *> type_ () in
-          pure (fun span -> Cst.EExt (`Ann (span, expr, ann))));
+          pure (fun span -> Cst.EAnn (span, expr, ann)));
          pure (fun _ -> expr);
        ])
 

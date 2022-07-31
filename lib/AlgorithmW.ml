@@ -234,7 +234,7 @@ let rec infer (e : Cst.expr) (ctx : Ctx.t) :
       | Some ty ->
           let* ty = instantiate ty in
           pure (Tast.EVar ((ty, span), name), ty, Subst.empty))
-  | ELet ((span, None), name, def, body) ->
+  | ELet (span, name, None, def, body) ->
       (* TODO: is it necessary to remove itself from ctx? *)
       let ctx' = Ctx.remove name ctx in
       let* tvar = fresh in
@@ -248,7 +248,7 @@ let rec infer (e : Cst.expr) (ctx : Ctx.t) :
       let* body, body_t, s2 = infer body (Subst.apply_ctx s1 ctx''') in
       pure
         (Tast.ELet ((body_t, span), name, def, body), body_t, Subst.(s1 <+> s2))
-  | ELet ((span, Some ann_t), name, def, body) ->
+  | ELet (span, name, Some ann_t, def, body) ->
       (* TODO: is it necessary to remove itself from ctx? *)
       let ctx' = Ctx.remove name ctx in
       let* ann_t = solve_type ann_t in
@@ -272,7 +272,7 @@ let rec infer (e : Cst.expr) (ctx : Ctx.t) :
         ( Tast.EIf ((con_t, span), cond, con, alt),
           con_t,
           Subst.(s1 <+> s2 <+> s3 <+> s4 <+> s5) )
-  | ELam ((span, None), param, body) ->
+  | ELam (span, param, None, body) ->
       let* param_t = fresh_var in
       (* TODO: should remove param from ctx first? does it matter? *)
       let ctx' = Ctx.insert param (Type.mono param_t) ctx in
@@ -282,7 +282,7 @@ let rec infer (e : Cst.expr) (ctx : Ctx.t) :
         ( Tast.ELam ((param_t, body_t, span), param, body),
           Type.Arrow (param_t, body_t),
           s1 )
-  | ELam ((span, Some param_t), param, body) ->
+  | ELam (span, param, Some param_t, body) ->
       let* param_t = solve_type param_t in
       let ctx' = Ctx.insert param (Type.mono param_t) ctx in
       let* body, body_t, s1 = infer body ctx' in
@@ -298,7 +298,7 @@ let rec infer (e : Cst.expr) (ctx : Ctx.t) :
       let out_t = Subst.apply s3 out_t in
       pure
         (Tast.EApp ((out_t, span), func, arg), out_t, Subst.(s1 <+> s2 <+> s3))
-  | EExt (`Ann (_span, expr, ann_t)) ->
+  | EAnn (_span, expr, ann_t) ->
       let* ann_t = solve_type ann_t in
       let* expr, ty, s1 = infer expr ctx in
       let* s2 = unify ann_t ty in
@@ -364,7 +364,7 @@ let infer_bindings (ctx : Ctx.t) (bindings : Cst.bind list) :
   let top_level = Ctx.of_list top_level in
   let rec infer_all ctx oks errs subs :
       Cst.bind list ->
-      ( (Type.mono * Cst.xty * string * Tast.expr) list * Ctx.t * Subst.t,
+      ( (Type.mono * Source.span * string * Tast.expr) list * Ctx.t * Subst.t,
         Error.t list )
       t = function
     | [] ->

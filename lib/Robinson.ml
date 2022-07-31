@@ -213,7 +213,7 @@ module Core = struct
   let rec free_vars : Cst.expr -> StrSet.t = function
     | ELit _ -> StrSet.empty
     | EVar (_, name) -> StrSet.singleton name
-    | ELet (_, name, def, body) ->
+    | ELet (_, name, _, def, body) ->
         let def_vars = free_vars def in
         let body_vars = free_vars body in
         StrSet.(filter (fun v -> not (v = name)) (union def_vars body_vars))
@@ -222,14 +222,14 @@ module Core = struct
         let con_vars = free_vars con in
         let alt_vars = free_vars alt in
         StrSet.(union cond_vars (union con_vars alt_vars))
-    | ELam (_, param, body) ->
+    | ELam (_, param, _, body) ->
         let body_vars = free_vars body in
         StrSet.filter (fun v -> not (v = param)) body_vars
     | EApp (_, func, arg) ->
         let func_vars = free_vars func in
         let arg_vars = free_vars arg in
         StrSet.union func_vars arg_vars
-    | EExt (`Ann (_, expr, _)) -> free_vars expr
+    | EAnn (_, expr, _) -> free_vars expr
 
   (** Gets the free terms of an expression, removing terms in the ctx *)
   let get_free_terms (ctx : ty_ctx) (bindings : Cst.bind list) =
@@ -293,7 +293,7 @@ module Engine = struct
         | Some ty ->
             let* ty = Core.instantiate ty in
             with_type (EVar ((ty, span), name)))
-    | ELet ((span, ann), name, def, body) ->
+    | ELet (span, name, ann, def, body) ->
         let* expr_t = Option.fold ~none:Core.fresh_var ~some:Resolve.ty ann in
         Core.scope name expr_t
           (let* def_t, def = infer def in
@@ -308,7 +308,7 @@ module Engine = struct
         let* alt_t, alt = infer alt in
         let* _ = Core.constrain con_t alt_t in
         with_type (EIf ((con_t, span), cond, con, alt))
-    | ELam ((span, ann), param, body) ->
+    | ELam (span, param, ann, body) ->
         let* param_t = Option.fold ~none:Core.fresh_var ~some:Resolve.ty ann in
         Core.scope param param_t
           (let* body_t, body = infer body in
@@ -319,7 +319,7 @@ module Engine = struct
         let* arg_t, arg = infer arg in
         let* _ = Core.constrain func_t (Type.Arrow (arg_t, out_t)) in
         with_type (EApp ((out_t, span), func, arg))
-    | EExt (`Ann (_, expr, ann)) ->
+    | EAnn (_, expr, ann) ->
         let* ann_t = Resolve.ty ann in
         let* expr_t, expr = infer expr in
         let* _ = Core.constrain expr_t ann_t in

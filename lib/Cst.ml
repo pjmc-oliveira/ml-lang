@@ -1,30 +1,47 @@
-include Syn.Make (struct
-  (* Type extensions *)
-  type xty = Source.Span.t [@@deriving show]
+type ty =
+  | TCon of Source.Span.t * string
+  | TVar of Source.Span.t * string
+  | TArr of Source.Span.t * ty * ty
+[@@deriving show]
 
-  (* Expr extensions *)
-  type ('e, 't) lit = Source.Span.t [@@deriving show]
-  type ('e, 't) var = Source.Span.t [@@deriving show]
-  type ('e, 't) let_ = Source.Span.t * 't option [@@deriving show]
-  type ('e, 't) if_ = Source.Span.t [@@deriving show]
-  type ('e, 't) lam = Source.Span.t * 't option [@@deriving show]
-  type ('e, 't) app = Source.Span.t [@@deriving show]
-  type ('e, 't) ext = [ `Ann of Source.Span.t * 'e * 't ] [@@deriving show]
+type scheme = TMono of ty | TForall of Source.Span.t * string list * ty
+[@@deriving show]
 
-  (* Bindings and Module *)
-  type 't def = Source.Span.t * 't option [@@deriving show]
-  type xmodu = Source.Span.t [@@deriving show]
-end)
+let map_ty f = function
+  | TCon (x, name) -> TCon (f x, name)
+  | TVar (x, name) -> TVar (f x, name)
+  | TArr (x, from, to_) -> TArr (f x, from, to_)
+
+let map_scheme f = function
+  | TMono ty -> TMono (map_ty f ty)
+  | TForall (x, tvars, ty) -> TForall (f x, tvars, ty)
+
+type lit = Int of int | Bool of bool [@@deriving show]
+
+type expr =
+  | ELit of Source.Span.t * lit
+  | EVar of Source.Span.t * string
+  | ELet of Source.Span.t * string * ty option * expr * expr
+  | EIf of Source.Span.t * expr * expr * expr
+  | ELam of Source.Span.t * string * ty option * expr
+  | EApp of Source.Span.t * expr * expr
+  | EAnn of Source.Span.t * expr * ty
+[@@deriving show]
+
+type bind = Def of (Source.Span.t * scheme option) * string * expr
+[@@deriving show]
+
+type modu = Module of Source.Span.t * string * bind list [@@deriving show]
 
 let map_expr (f : Source.span -> Source.span) (e : expr) =
   match e with
   | ELit (x, lit) -> ELit (f x, lit)
   | EVar (x, name) -> EVar (f x, name)
-  | ELet ((x, def_t), name, def, body) -> ELet ((f x, def_t), name, def, body)
+  | ELet (x, name, def_t, def, body) -> ELet (f x, name, def_t, def, body)
   | EIf (x, cond, con, alt) -> EIf (f x, cond, con, alt)
-  | ELam ((x, param_t), param, body) -> ELam ((f x, param_t), param, body)
+  | ELam (x, param, param_t, body) -> ELam (f x, param, param_t, body)
   | EApp (x, func, arg) -> EApp (f x, func, arg)
-  | EExt (`Ann (x, expr, ty)) -> EExt (`Ann (f x, expr, ty))
+  | EAnn (x, expr, ty) -> EAnn (f x, expr, ty)
 
 let rec ty_to_ast (t : ty) : Ast.ty =
   match t with
@@ -51,25 +68,25 @@ let rec expr_to_ast (e : expr) : Ast.expr =
   match (e : expr) with
   | ELit (_, lit) -> ELit (lit_to_ast lit)
   | EVar (_, name) -> EVar name
-  | ELet ((_, def_t), name, def, body) ->
+  | ELet (_, name, def_t, def, body) ->
       let def_t = Option.map ty_to_ast def_t in
       let def = expr_to_ast def in
       let body = expr_to_ast body in
-      ELet (def_t, name, def, body)
+      ELet (name, def_t, def, body)
   | EIf (_, cond, con, alt) ->
       let cond = expr_to_ast cond in
       let con = expr_to_ast con in
       let alt = expr_to_ast alt in
       EIf (cond, con, alt)
-  | ELam ((_, param_t), param, body) ->
+  | ELam (_, param, param_t, body) ->
       let param_t = Option.map ty_to_ast param_t in
       let body = expr_to_ast body in
-      ELam (param_t, param, body)
+      ELam (param, param_t, body)
   | EApp (_, func, arg) ->
       let func = expr_to_ast func in
       let arg = expr_to_ast arg in
       EApp (func, arg)
-  | EExt (`Ann (_, expr, ty)) ->
+  | EAnn (_, expr, ty) ->
       let expr = expr_to_ast expr in
       let ty = ty_to_ast ty in
       EAnn (expr, ty)

@@ -5,9 +5,9 @@ type lit = Int of int | Bool of bool [@@deriving show]
 type expr =
   | ELit of lit
   | EVar of string
-  | ELet of ty option * string * expr * expr
+  | ELet of string * ty option * expr * expr
   | EIf of expr * expr * expr
-  | ELam of ty option * string * expr
+  | ELam of string * ty option * expr
   | EApp of expr * expr
   | EAnn of expr * ty
 [@@deriving show]

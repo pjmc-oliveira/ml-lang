@@ -197,7 +197,7 @@ let rec infer (e : Cst.expr) (ctx : ty_ctx) :
           let* type_ = instantiate type_ in
           pure (EVar ((type_, span), name), type_, [])
       | None -> fail (unbound_var name span))
-  | ELet ((span, def_t), name, def, body) ->
+  | ELet (span, name, def_t, def, body) ->
       let* def, def_t, c1 = infer_check_let name def def_t ctx in
       let ctx' = TyCtx.insert name (Type.mono def_t) ctx in
       let* body, type_, c2 = infer body ctx' in
@@ -219,7 +219,7 @@ let rec infer (e : Cst.expr) (ctx : ty_ctx) :
           )
       else
         fail (if_branch_mismatch con_t alt_t span)
-  | ELam ((span, param_t), param, body) -> (
+  | ELam (span, param, param_t, body) -> (
       match param_t with
       | None ->
           let* name = fresh in
@@ -255,7 +255,7 @@ let rec infer (e : Cst.expr) (ctx : ty_ctx) :
                   type_,
                   ((arg_t, param_t, Some err) :: c1) @ c2 ))
       | _ -> fail (expr_not_a_function func span))
-  | EExt (`Ann (_, expr, ann)) ->
+  | EAnn (_, expr, ann) ->
       let* type_ = solve_type ann in
       let* expr, c1 = check expr type_ ctx in
       pure (expr, type_, c1)
@@ -277,7 +277,7 @@ and check (e : Cst.expr) (expected_t : Type.mono) (ctx : ty_ctx) :
           let* _ = assert_equal expected_t type_ in
           pure (EVar ((type_, span), name), [])
       | None -> fail (unbound_var name span))
-  | ELet ((span, def_t), name, def, body) ->
+  | ELet (span, name, def_t, def, body) ->
       let* def, def_t, c1 = infer_check_let name def def_t ctx in
       let ctx' = TyCtx.insert name (Type.mono def_t) ctx in
       let* body, c2 = check body expected_t ctx' in
@@ -295,7 +295,7 @@ and check (e : Cst.expr) (expected_t : Type.mono) (ctx : ty_ctx) :
       pure
         ( EIf ((expected_t, span), cond, con, alt),
           ((cond_t, Type.Bool, None) :: c1) @ c2 @ c3 )
-  | ELam ((span, param_t), param, body) -> (
+  | ELam (span, param, param_t, body) -> (
       match expected_t with
       | Arrow (from, to_) -> (
           match param_t with
@@ -321,7 +321,7 @@ and check (e : Cst.expr) (expected_t : Type.mono) (ctx : ty_ctx) :
       let* arg, arg_t, c1 = infer arg ctx in
       let* func, c2 = check func (Arrow (arg_t, expected_t)) ctx in
       pure (EApp ((expected_t, span), func, arg), c1 @ c2)
-  | EExt (`Ann (_, expr, ann)) ->
+  | EAnn (_, expr, ann) ->
       let* type_ = solve_type ann in
       let* expr, c1 = check expr type_ ctx in
       pure (expr, c1)

@@ -85,7 +85,7 @@ let ast_tests =
                ( None,
                  "hello",
                  EIf
-                   ( ELet (None, "x", ELit (Bool true), EVar "x"),
+                   ( ELet ("x", None, ELit (Bool true), EVar "x"),
                      ELit (Int 1),
                      ELit (Int 2) ) );
            ] ));
@@ -100,7 +100,7 @@ let ast_tests =
       "module Hello = { def hello = let x = 1 in x }"
       (Module
          ( "Hello",
-           [ Def (None, "hello", ELet (None, "x", ELit (Int 1), EVar "x")) ] ));
+           [ Def (None, "hello", ELet ("x", None, ELit (Int 1), EVar "x")) ] ));
     test_parser_ast "if expression"
       "module Hello = { def hello = if True then 1 else x }"
       (Module
@@ -112,9 +112,9 @@ let ast_tests =
       "module Hello = { def hello = \\x : Int. x }"
       (Module
          ( "Hello",
-           [ Def (None, "hello", ELam (Some (TCon "Int"), "x", EVar "x")) ] ));
+           [ Def (None, "hello", ELam ("x", Some (TCon "Int"), EVar "x")) ] ));
     test_parser_ast "lambda expression" "module Hello = { def hello = \\x x }"
-      (Module ("Hello", [ Def (None, "hello", ELam (None, "x", EVar "x")) ]));
+      (Module ("Hello", [ Def (None, "hello", ELam ("x", None, EVar "x")) ]));
     test_parser_ast "lambda expression annotated as a whole"
       "module Hello = { def hello = (\\x x) : Int -> Int }"
       (Module
@@ -123,7 +123,7 @@ let ast_tests =
              Def
                ( None,
                  "hello",
-                 EAnn (ELam (None, "x", EVar "x"), TArr (TCon "Int", TCon "Int"))
+                 EAnn (ELam ("x", None, EVar "x"), TArr (TCon "Int", TCon "Int"))
                );
            ] ));
     test_parser_ast "function application"
@@ -160,7 +160,7 @@ let ast_tests =
                    (TForall
                       ([ "a"; "b" ], TArr (TVar "a", TArr (TVar "b", TVar "a")))),
                  "const",
-                 ELam (None, "x", ELam (None, "y", EVar "x")) );
+                 ELam ("x", None, ELam ("y", None, EVar "x")) );
            ] ));
     test_parser_ast "let-binding type annotation"
       "module Hello = { def hello = let x : Bool = True in x }"
@@ -170,7 +170,7 @@ let ast_tests =
              Def
                ( None,
                  "hello",
-                 ELet (Some (TCon "Bool"), "x", ELit (Bool true), EVar "x") );
+                 ELet ("x", Some (TCon "Bool"), ELit (Bool true), EVar "x") );
            ] ));
     test_parser_ast "multi-parameter lambda"
       "module Hello = { def const : Int -> Int -> Int = \\x \\y x }"
@@ -180,7 +180,7 @@ let ast_tests =
              Def
                ( Some (TMono (TArr (TCon "Int", TArr (TCon "Int", TCon "Int")))),
                  "const",
-                 ELam (None, "x", ELam (None, "y", EVar "x")) );
+                 ELam ("x", None, ELam ("y", None, EVar "x")) );
            ] ));
     test_parser_ast "high order function type"
       "module Hello = { def hello : (Int -> Int) -> Int = \\f f 1 }"
@@ -190,7 +190,7 @@ let ast_tests =
              Def
                ( Some (TMono (TArr (TArr (TCon "Int", TCon "Int"), TCon "Int"))),
                  "hello",
-                 ELam (None, "f", EApp (EVar "f", ELit (Int 1))) );
+                 ELam ("f", None, EApp (EVar "f", ELit (Int 1))) );
            ] ));
   ]
 
