@@ -270,7 +270,6 @@ module Mono (S : Solver.S) = struct
               }"
              (Ctx.of_terms_list
                 [ ("add1", Type.(mono (Arrow (Con "Nat", Con "Nat")))) ]);
-           (* TODO: recursive types *)
            (* TODO: mutually recursive types *)
            (* TODO: polymorphic types *)
            (* Failures *)
