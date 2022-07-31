@@ -315,7 +315,7 @@ let def : (Source.span -> Cst.bind) t =
   let* ann = optional (accept Colon *> type_scheme ()) in
   let* () = expect Equal in
   let* expr = expression () in
-  pure (fun span -> Cst.Def ((span, ann), name, expr))
+  pure (fun span -> Cst.Def (span, name, ann, expr))
 
 let binding : Cst.bind t =
   let* b, sp = span_of (one_of (error [ Text "Expected binding" ]) [ def ]) in

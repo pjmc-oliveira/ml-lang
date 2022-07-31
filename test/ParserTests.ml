@@ -40,8 +40,9 @@ let cst_tests =
            "Hello",
            [
              Def
-               ( ({ index = 17; line = 1; column = 18; length = 13 }, None),
+               ( { index = 17; line = 1; column = 18; length = 13 },
                  "hello",
+                 None,
                  ELit ({ index = 29; line = 1; column = 30; length = 1 }, Int 1)
                );
            ] ));
@@ -52,13 +53,15 @@ let cst_tests =
            "Hello",
            [
              Def
-               ( ({ index = 17; line = 1; column = 18; length = 13 }, None),
+               ( { index = 17; line = 1; column = 18; length = 13 },
                  "hello",
+                 None,
                  ELit ({ index = 29; line = 1; column = 30; length = 1 }, Int 1)
                );
              Def
-               ( ({ index = 31; line = 1; column = 32; length = 11 }, None),
+               ( { index = 31; line = 1; column = 32; length = 11 },
                  "bye",
+                 None,
                  ELit ({ index = 41; line = 1; column = 42; length = 1 }, Int 2)
                );
            ] ));

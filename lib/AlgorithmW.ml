@@ -225,15 +225,15 @@ let rec infer (e : Cst.expr) (ctx : Ctx.t) :
   let open S.Syntax in
   match e with
   | ELit (span, Int value) ->
-      pure (Tast.ELit ((Int, span), Int value), Type.Int, Subst.empty)
+      pure (Tast.ELit (Int, span, Int value), Type.Int, Subst.empty)
   | ELit (span, Bool value) ->
-      pure (Tast.ELit ((Bool, span), Bool value), Type.Bool, Subst.empty)
+      pure (Tast.ELit (Bool, span, Bool value), Type.Bool, Subst.empty)
   | EVar (span, name) -> (
       match Ctx.lookup name ctx with
       | None -> fail (unbound_var name span)
       | Some ty ->
           let* ty = instantiate ty in
-          pure (Tast.EVar ((ty, span), name), ty, Subst.empty))
+          pure (Tast.EVar (ty, span, name), ty, Subst.empty))
   | ELet (span, name, None, def, body) ->
       (* TODO: is it necessary to remove itself from ctx? *)
       let ctx' = Ctx.remove name ctx in
@@ -246,8 +246,7 @@ let rec infer (e : Cst.expr) (ctx : Ctx.t) :
       (* Don't generalize let-bindings *)
       let ctx''' = Ctx.insert name (Type.mono def_t) ctx'' in
       let* body, body_t, s2 = infer body (Subst.apply_ctx s1 ctx''') in
-      pure
-        (Tast.ELet ((body_t, span), name, def, body), body_t, Subst.(s1 <+> s2))
+      pure (Tast.ELet (body_t, span, name, def, body), body_t, Subst.(s1 <+> s2))
   | ELet (span, name, Some ann_t, def, body) ->
       (* TODO: is it necessary to remove itself from ctx? *)
       let ctx' = Ctx.remove name ctx in
@@ -259,7 +258,7 @@ let rec infer (e : Cst.expr) (ctx : Ctx.t) :
       let ctx''' = Ctx.insert name (Type.mono def_t) ctx'' in
       let* body, body_t, s3 = infer body (Subst.apply_ctx s1 ctx''') in
       pure
-        ( Tast.ELet ((body_t, span), name, def, body),
+        ( Tast.ELet (body_t, span, name, def, body),
           body_t,
           Subst.(s1 <+> s2 <+> s3) )
   | EIf (span, cond, con, alt) ->
@@ -269,7 +268,7 @@ let rec infer (e : Cst.expr) (ctx : Ctx.t) :
       let* alt, alt_t, s4 = infer alt ctx in
       let* s5 = unify con_t alt_t in
       pure
-        ( Tast.EIf ((con_t, span), cond, con, alt),
+        ( Tast.EIf (con_t, span, cond, con, alt),
           con_t,
           Subst.(s1 <+> s2 <+> s3 <+> s4 <+> s5) )
   | ELam (span, param, None, body) ->
@@ -279,7 +278,7 @@ let rec infer (e : Cst.expr) (ctx : Ctx.t) :
       let* body, body_t, s1 = infer body ctx' in
       let param_t = Subst.apply s1 param_t in
       pure
-        ( Tast.ELam ((param_t, body_t, span), param, body),
+        ( Tast.ELam (param_t, body_t, span, param, body),
           Type.Arrow (param_t, body_t),
           s1 )
   | ELam (span, param, Some param_t, body) ->
@@ -287,7 +286,7 @@ let rec infer (e : Cst.expr) (ctx : Ctx.t) :
       let ctx' = Ctx.insert param (Type.mono param_t) ctx in
       let* body, body_t, s1 = infer body ctx' in
       pure
-        ( Tast.ELam ((param_t, body_t, span), param, body),
+        ( Tast.ELam (param_t, body_t, span, param, body),
           Type.Arrow (param_t, body_t),
           s1 )
   | EApp (span, func, arg) ->
@@ -296,8 +295,7 @@ let rec infer (e : Cst.expr) (ctx : Ctx.t) :
       let* arg, arg_t, s2 = infer arg (Subst.apply_ctx s1 ctx) in
       let* s3 = unify (Subst.apply s2 func_t) (Arrow (arg_t, out_t)) in
       let out_t = Subst.apply s3 out_t in
-      pure
-        (Tast.EApp ((out_t, span), func, arg), out_t, Subst.(s1 <+> s2 <+> s3))
+      pure (Tast.EApp (out_t, span, func, arg), out_t, Subst.(s1 <+> s2 <+> s3))
   | EAnn (_span, expr, ann_t) ->
       let* ann_t = solve_type ann_t in
       let* expr, ty, s1 = infer expr ctx in
@@ -308,27 +306,27 @@ let binding (ctx : Ctx.t) (b : Cst.bind) :
     (Tast.bind * Type.poly * Subst.t, Error.t) t =
   let open S.Syntax in
   match b with
-  | Def ((span, None), name, expr) ->
+  | Def (span, name, None, expr) ->
       let ctx' = Ctx.remove name ctx in
       let* ann_t = fresh_var in
       let ctx'' = Ctx.insert name (Type.mono ann_t) ctx' in
       let* expr, expr_t, s1 = infer expr ctx'' in
       let* s2 = unify (Subst.apply s1 ann_t) expr_t in
       let ty = generalize expr_t in
-      pure (Tast.Def ((ty, span), name, expr), ty, Subst.(s1 <+> s2))
-  | Def ((span, Some ann_t), name, expr) ->
+      pure (Tast.Def (ty, span, name, expr), ty, Subst.(s1 <+> s2))
+  | Def (span, name, Some ann_t, expr) ->
       let* ann_t = solve_scheme ann_t in
       let ctx' = Ctx.remove name ctx in
       let ctx'' = Ctx.insert name ann_t ctx' in
       let* expr, expr_t, s1 = infer expr ctx'' in
       let ty = generalize expr_t in
       (* let* s2 = unify (ann_t) expr_t in *)
-      pure (Tast.Def ((ty, span), name, expr), ty, s1)
+      pure (Tast.Def (ty, span, name, expr), ty, s1)
 
 let infer_binding ctx (b : Cst.bind) =
   let open S.Syntax in
   match b with
-  | Def ((span, None), name, expr) ->
+  | Def (span, name, None, expr) ->
       let ctx' = Ctx.remove name ctx in
       let* ann_t = fresh_var in
       let ctx'' = Ctx.insert name (Type.mono ann_t) ctx' in
@@ -337,7 +335,7 @@ let infer_binding ctx (b : Cst.bind) =
       let ty = Subst.apply s2 expr_t in
       (* let ty = generalize expr_t in *)
       pure (ty, span, name, expr, Subst.(s1 <+> s2))
-  | Def ((span, Some ann_t), name, expr) ->
+  | Def (span, name, Some ann_t, expr) ->
       let* ann_t = solve_scheme ann_t in
       let ctx' = Ctx.remove name ctx in
       let ctx'' = Ctx.insert name ann_t ctx' in
@@ -351,7 +349,7 @@ let infer_bindings (ctx : Ctx.t) (bindings : Cst.bind list) :
   let open S.Syntax in
   let* top_level =
     bindings
-    |> S.traverse_list (fun (Cst.Def ((_, ann), name, _)) ->
+    |> S.traverse_list (fun (Cst.Def (_, name, ann, _)) ->
            match ann with
            | None ->
                let* ty = fresh_var in
@@ -406,7 +404,7 @@ let infer_bindings (ctx : Ctx.t) (bindings : Cst.bind list) :
         let scheme = generalize ty in
         let ctx = Ctx.insert name scheme ctx in
         let* bs, ctx' = generalize_all bs ctx sub in
-        pure (Tast.Def ((scheme, span), name, expr) :: bs, ctx')
+        pure (Tast.Def (scheme, span, name, expr) :: bs, ctx')
   in
   let* inferred, ctx', subst =
     infer_all (Ctx.union top_level ctx) [] [] Subst.empty bindings
@@ -436,7 +434,7 @@ let solve_module (m : Cst.modu) (ctx : ty_ctx) : (ty_ctx, Error.t list) result =
   let insert_to_ctx ctx (name, ty) = TyCtx.insert name ty ctx in
   let type_of_binding b =
     match b with
-    | Tast.Def ((type_, _), name, _) -> (name, type_)
+    | Tast.Def (type_, _, name, _) -> (name, type_)
   in
   let* m = module_ m ctx in
   match m with

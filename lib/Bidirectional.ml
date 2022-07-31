@@ -187,21 +187,21 @@ let rec infer (e : Cst.expr) (ctx : ty_ctx) :
   match e with
   | ELit (span, Int value) ->
       let type_ = Type.Int in
-      pure (ELit ((type_, span), Int value), type_, [])
+      pure (ELit (type_, span, Int value), type_, [])
   | ELit (span, Bool value) ->
       let type_ = Type.Bool in
-      pure (ELit ((type_, span), Bool value), type_, [])
+      pure (ELit (type_, span, Bool value), type_, [])
   | EVar (span, name) -> (
       match TyCtx.lookup name ctx with
       | Some type_ ->
           let* type_ = instantiate type_ in
-          pure (EVar ((type_, span), name), type_, [])
+          pure (EVar (type_, span, name), type_, [])
       | None -> fail (unbound_var name span))
   | ELet (span, name, def_t, def, body) ->
       let* def, def_t, c1 = infer_check_let name def def_t ctx in
       let ctx' = TyCtx.insert name (Type.mono def_t) ctx in
       let* body, type_, c2 = infer body ctx' in
-      pure (ELet ((type_, span), name, def, body), type_, c1 @ c2)
+      pure (ELet (type_, span, name, def, body), type_, c1 @ c2)
   | EIf (span, cond, con, alt) ->
       let* cond, cond_t, c1 = infer cond ctx in
       let* _ =
@@ -213,7 +213,7 @@ let rec infer (e : Cst.expr) (ctx : ty_ctx) :
       let* alt, alt_t, c3 = infer alt ctx in
       if con_t = alt_t then
         pure
-          ( EIf ((con_t, span), cond, con, alt),
+          ( EIf (con_t, span, cond, con, alt),
             con_t,
             ((cond_t, Type.Bool, None) :: (con_t, alt_t, None) :: c1) @ c2 @ c3
           )
@@ -228,7 +228,7 @@ let rec infer (e : Cst.expr) (ctx : ty_ctx) :
           let* body, type_, c1 = infer body ctx' in
           (* TODO: should this be type_? type_ vs body_t *)
           pure
-            ( ELam ((param_t, type_, span), param, body),
+            ( ELam (param_t, type_, span, param, body),
               Type.Arrow (param_t, type_),
               c1 )
       | Some param_t ->
@@ -237,7 +237,7 @@ let rec infer (e : Cst.expr) (ctx : ty_ctx) :
           let* body, type_, c1 = infer body ctx' in
           (* TODO type vs body_t *)
           pure
-            ( ELam ((param_t, type_, span), param, body),
+            ( ELam (param_t, type_, span, param, body),
               Type.Arrow (param_t, type_),
               c1 ))
   | EApp (span, func, arg) -> (
@@ -247,11 +247,11 @@ let rec infer (e : Cst.expr) (ctx : ty_ctx) :
           let* arg, arg_t, c2 = infer arg ctx in
           match param_t with
           | _ when param_t = arg_t ->
-              pure (EApp ((type_, span), func, arg), type_, c1 @ c2)
+              pure (EApp (type_, span, func, arg), type_, c1 @ c2)
           | _ ->
               let err = wrong_arg_type param_t arg_t span in
               pure
-                ( EApp ((type_, span), func, arg),
+                ( EApp (type_, span, func, arg),
                   type_,
                   ((arg_t, param_t, Some err) :: c1) @ c2 ))
       | _ -> fail (expr_not_a_function func span))
@@ -266,22 +266,22 @@ and check (e : Cst.expr) (expected_t : Type.mono) (ctx : ty_ctx) :
   match e with
   | ELit (span, Int value) ->
       let* _ = assert_equal expected_t Int in
-      pure (ELit ((Int, span), Int value), [])
+      pure (ELit (Int, span, Int value), [])
   | ELit (span, Bool value) ->
       let* _ = assert_equal expected_t Bool in
-      pure (ELit ((Bool, span), Bool value), [])
+      pure (ELit (Bool, span, Bool value), [])
   | EVar (span, name) -> (
       match TyCtx.lookup name ctx with
       | Some type_ ->
           let* type_ = instantiate type_ in
           let* _ = assert_equal expected_t type_ in
-          pure (EVar ((type_, span), name), [])
+          pure (EVar (type_, span, name), [])
       | None -> fail (unbound_var name span))
   | ELet (span, name, def_t, def, body) ->
       let* def, def_t, c1 = infer_check_let name def def_t ctx in
       let ctx' = TyCtx.insert name (Type.mono def_t) ctx in
       let* body, c2 = check body expected_t ctx' in
-      pure (ELet ((expected_t, span), name, def, body), c1 @ c2)
+      pure (ELet (expected_t, span, name, def, body), c1 @ c2)
   | EIf (span, cond, con, alt) ->
       (* TODO: Should we check this instead of inferring? *)
       let* cond, cond_t, c1 = infer cond ctx in
@@ -293,7 +293,7 @@ and check (e : Cst.expr) (expected_t : Type.mono) (ctx : ty_ctx) :
       let* con, c2 = check con expected_t ctx in
       let* alt, c3 = check alt expected_t ctx in
       pure
-        ( EIf ((expected_t, span), cond, con, alt),
+        ( EIf (expected_t, span, cond, con, alt),
           ((cond_t, Type.Bool, None) :: c1) @ c2 @ c3 )
   | ELam (span, param, param_t, body) -> (
       match expected_t with
@@ -304,11 +304,11 @@ and check (e : Cst.expr) (expected_t : Type.mono) (ctx : ty_ctx) :
               let* c1 = assert_equal from param_t in
               let ctx' = TyCtx.insert param (Type.mono param_t) ctx in
               let* body, c2 = check body to_ ctx' in
-              pure (ELam ((param_t, expected_t, span), param, body), c1 @ c2)
+              pure (ELam (param_t, expected_t, span, param, body), c1 @ c2)
           | None ->
               let ctx' = TyCtx.insert param (Type.mono from) ctx in
               let* body, c1 = check body to_ ctx' in
-              pure (ELam ((from, expected_t, span), param, body), c1))
+              pure (ELam (from, expected_t, span, param, body), c1))
       | _ ->
           (* TODO: Better error message? This will always fail... *)
           let* expr, actual_t, c1 = infer e ctx in
@@ -320,7 +320,7 @@ and check (e : Cst.expr) (expected_t : Type.mono) (ctx : ty_ctx) :
   | EApp (span, func, arg) ->
       let* arg, arg_t, c1 = infer arg ctx in
       let* func, c2 = check func (Arrow (arg_t, expected_t)) ctx in
-      pure (EApp ((expected_t, span), func, arg), c1 @ c2)
+      pure (EApp (expected_t, span, func, arg), c1 @ c2)
   | EAnn (_, expr, ann) ->
       let* type_ = solve_type ann in
       let* expr, c1 = check expr type_ ctx in
@@ -339,20 +339,20 @@ and infer_check_let (name : string) (expr : Cst.expr) (ty : Cst.ty option)
 let binding (ctx : ty_ctx) (b : Cst.bind) : (Tast.bind * Type.poly, Error.t) t =
   let open Tast in
   match b with
-  | Def ((span, ann), name, expr) -> (
+  | Def (span, name, ann, expr) -> (
       match ann with
       | Some ann ->
           let* type_ = solve_scheme ann in
           let ctx' = TyCtx.insert name type_ ctx in
           let* expr, _c1 = check expr (Type.get_mono_type type_) ctx' in
           (* TODO: Solve constraints *)
-          pure (Def ((type_, span), name, expr), type_)
+          pure (Def (type_, span, name, expr), type_)
       | None ->
           let* expr, type_, c1 = infer expr ctx in
           let* s = solve_constraints c1 in
           let type_ = apply_subst s type_ in
           let type_ = generalize type_ in
-          pure (Def ((type_, span), name, expr), type_))
+          pure (Def (type_, span, name, expr), type_))
 
 let rec multiple_passes (previous : int) (bindings : Cst.bind list)
     (ctx : ty_ctx) : (Tast.bind list, Error.t list) t =
@@ -372,7 +372,7 @@ let rec multiple_passes (previous : int) (bindings : Cst.bind list)
     | b :: bs' -> (
         let* s = S.get in
         match binding ctx b s with
-        | Ok (((Def (_x, name, _expr) as tast), ty), _s) ->
+        | Ok (((Def (_ty, _span, name, _expr) as tast), ty), _s) ->
             let ctx' = TyCtx.insert name ty ctx in
             loop errs (tast :: oks) bs' ctx'
         | Error e -> loop ((b, e) :: errs) oks bs' ctx)
@@ -392,7 +392,7 @@ let solve_module (m : Cst.modu) (ctx : ty_ctx) : (ty_ctx, Error.t list) result =
   let insert_to_ctx ctx (name, ty) = TyCtx.insert name ty ctx in
   let type_of_binding b =
     match b with
-    | Tast.Def ((type_, _), name, _) -> (name, type_)
+    | Tast.Def (type_, _, name, _) -> (name, type_)
   in
   let* m = module_ m ctx in
   match m with

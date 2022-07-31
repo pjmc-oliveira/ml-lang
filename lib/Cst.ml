@@ -28,7 +28,7 @@ type expr =
   | EAnn of Source.Span.t * expr * ty
 [@@deriving show]
 
-type bind = Def of (Source.Span.t * scheme option) * string * expr
+type bind = Def of Source.Span.t * string * scheme option * expr
 [@@deriving show]
 
 type modu = Module of Source.Span.t * string * bind list [@@deriving show]
@@ -93,7 +93,7 @@ let rec expr_to_ast (e : expr) : Ast.expr =
 
 let bind_to_ast (b : bind) : Ast.bind =
   match b with
-  | Def ((_, scheme), name, expr) ->
+  | Def (_, name, scheme, expr) ->
       Def (Option.map scheme_to_ast scheme, name, expr_to_ast expr)
 
 let to_ast (m : modu) : Ast.modu =

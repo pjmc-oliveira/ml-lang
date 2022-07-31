@@ -235,7 +235,7 @@ module Core = struct
   let get_free_terms (ctx : ty_ctx) (bindings : Cst.bind list) =
     let free_terms =
       List.map
-        (fun (Cst.Def (_, name, expr)) -> (name, free_vars expr))
+        (fun (Cst.Def (_, name, _, expr)) -> (name, free_vars expr))
         bindings
     in
     let list_of_set s = List.of_seq (StrSet.to_seq s) in
@@ -284,15 +284,15 @@ module Engine = struct
 
   (** Infers the type of an expression *)
   let rec infer : Cst.expr -> (Type.mono * Tast.expr) t = function
-    | ELit (span, Int value) -> with_type (ELit ((Int, span), Int value))
-    | ELit (span, Bool value) -> with_type (ELit ((Bool, span), Bool value))
+    | ELit (span, Int value) -> with_type (ELit (Int, span, Int value))
+    | ELit (span, Bool value) -> with_type (ELit (Bool, span, Bool value))
     | EVar (span, name) -> (
         let* ctx = ask in
         match TyCtx.lookup name ctx with
         | None -> Report.unbound_var name span
         | Some ty ->
             let* ty = Core.instantiate ty in
-            with_type (EVar ((ty, span), name)))
+            with_type (EVar (ty, span, name)))
     | ELet (span, name, ann, def, body) ->
         let* expr_t = Option.fold ~none:Core.fresh_var ~some:Resolve.ty ann in
         Core.scope name expr_t
@@ -300,25 +300,25 @@ module Engine = struct
            Core.scope name def_t
              (let* body_t, body = infer body in
               let* _ = Core.constrain expr_t def_t in
-              with_type (ELet ((body_t, span), name, def, body))))
+              with_type (ELet (body_t, span, name, def, body))))
     | EIf (span, cond, con, alt) ->
         let* cond_t, cond = infer cond in
         let* _ = Core.constrain cond_t Bool in
         let* con_t, con = infer con in
         let* alt_t, alt = infer alt in
         let* _ = Core.constrain con_t alt_t in
-        with_type (EIf ((con_t, span), cond, con, alt))
+        with_type (EIf (con_t, span, cond, con, alt))
     | ELam (span, param, ann, body) ->
         let* param_t = Option.fold ~none:Core.fresh_var ~some:Resolve.ty ann in
         Core.scope param param_t
           (let* body_t, body = infer body in
-           with_type (ELam ((param_t, body_t, span), param, body)))
+           with_type (ELam (param_t, body_t, span, param, body)))
     | EApp (span, func, arg) ->
         let* out_t = Core.fresh_var in
         let* func_t, func = infer func in
         let* arg_t, arg = infer arg in
         let* _ = Core.constrain func_t (Type.Arrow (arg_t, out_t)) in
-        with_type (EApp ((out_t, span), func, arg))
+        with_type (EApp (out_t, span, func, arg))
     | EAnn (_, expr, ann) ->
         let* ann_t = Resolve.ty ann in
         let* expr_t, expr = infer expr in
@@ -338,26 +338,26 @@ let infer_binding (b : Cst.bind) : Tast.bind T.t =
         Core.constrain ty ty'
   in
   match b with
-  | Cst.Def ((span, None), name, expr) ->
+  | Cst.Def (span, name, None, expr) ->
       let* expr_t, expr = Engine.infer expr in
       let* _ = make_constr name expr_t in
       let ty = Core.generalize expr_t in
-      pure (Tast.Def ((ty, span), name, expr))
-  | Cst.Def ((span, Some ann), name, expr) ->
+      pure (Tast.Def (ty, span, name, expr))
+  | Cst.Def (span, name, Some ann, expr) ->
       let* ann_t = Resolve.scheme ann in
       let ann_t = Type.get_mono_type ann_t in
       let* expr_t, expr = Engine.infer expr in
       let* _ = Core.constrain ann_t expr_t in
       let* _ = make_constr name expr_t in
       let ty = Core.generalize expr_t in
-      pure (Tast.Def ((ty, span), name, expr))
+      pure (Tast.Def (ty, span, name, expr))
 
 (** Infers the types of a bind group *)
 let infer_bindings (bindings : Cst.bind list) : Tast.bind list T.t =
   let open T in
   let* top_level =
     bindings
-    |> traverse_list (fun (Cst.Def ((_, ann), name, _)) ->
+    |> traverse_list (fun (Cst.Def (_, name, ann, _)) ->
            match ann with
            | None ->
                let* ty = Core.fresh_var in
@@ -380,7 +380,7 @@ let solve_binding_group (ctx : ty_ctx) (bindings : Cst.bind list) =
           Ok
             (List.map
                (function
-                 | Tast.Def ((ty, span), name, expr) ->
+                 | Tast.Def (ty, span, name, expr) ->
                      let scheme =
                        ty |> Type.get_mono_type |> Core.apply subst
                        |> Core.generalize
@@ -389,7 +389,7 @@ let solve_binding_group (ctx : ty_ctx) (bindings : Cst.bind list) =
                      let expr =
                        Tast.map_type (Core.apply (subst @ subst')) expr
                      in
-                     Tast.Def ((scheme, span), name, expr))
+                     Tast.Def (scheme, span, name, expr))
                bindings))
 
 (** Solves all bindings one strongly connected componenent at a time *)
@@ -400,7 +400,7 @@ let solve_bindings (ctx : ty_ctx) (bindings : Cst.bind list) =
     StrMap.of_seq
       (List.to_seq
          (List.map
-            (fun (Cst.Def (_, name, _) as bind) -> (name, bind))
+            (fun (Cst.Def (_, name, _, _) as bind) -> (name, bind))
             bindings))
   in
   let groups =
@@ -414,7 +414,7 @@ let solve_bindings (ctx : ty_ctx) (bindings : Cst.bind list) =
         | Ok bs' ->
             let new_ctx =
               List.fold_left
-                (fun ctx (Tast.Def ((ty, _), name, _)) ->
+                (fun ctx (Tast.Def (ty, _, name, _)) ->
                   TyCtx.insert name ty ctx)
                 ctx bs'
             in
@@ -439,7 +439,7 @@ let solve_module (m : Cst.modu) (ctx : ty_ctx) : (ty_ctx, Error.t list) result =
   let insert_to_ctx ctx (name, ty) = TyCtx.insert name ty ctx in
   let type_of_binding b =
     match b with
-    | Tast.Def ((type_, _), name, _) -> (name, type_)
+    | Tast.Def (type_, _, name, _) -> (name, type_)
   in
   let* m = module_ m ctx in
   match m with

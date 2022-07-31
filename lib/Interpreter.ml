@@ -33,22 +33,22 @@ let fix name expr ctx = Value.Fix { ctx; name; expr }
 let rec eval (e : Tast.expr) (ctx : tm_ctx) : (Value.t, Error.t) result =
   let open Result.Syntax in
   match e with
-  | ELit (_, Int value) -> Ok (Value.Int value)
-  | ELit (_, Bool value) -> Ok (Value.Bool value)
-  | EVar ((_, span), name) -> lookup span name ctx
-  | ELet (_, name, def, body) ->
+  | ELit (_, _, Int value) -> Ok (Value.Int value)
+  | ELit (_, _, Bool value) -> Ok (Value.Bool value)
+  | EVar (_, span, name) -> lookup span name ctx
+  | ELet (_, _, name, def, body) ->
       let fixpoint = fix name def ctx in
       let ctx' = define name fixpoint ctx in
       eval body ctx'
-  | EIf (_, cond, con, alt) -> (
+  | EIf (_, _, cond, con, alt) -> (
       let* cond = eval cond ctx in
       let* cond = force cond in
       match cond with
       | Bool true -> eval con ctx
       | Bool false -> eval alt ctx
       | _ -> failwith ("Impossible if-cond not bool: " ^ Value.show cond))
-  | ELam (_, param, body) -> Ok (Value.Closure { ctx; param; body })
-  | EApp (_, func, arg) -> (
+  | ELam (_, _, _, param, body) -> Ok (Value.Closure { ctx; param; body })
+  | EApp (_, _, func, arg) -> (
       let arg' = defer arg ctx in
       let* func = eval func ctx in
       let* func = force func in
@@ -65,7 +65,6 @@ let rec eval (e : Tast.expr) (ctx : tm_ctx) : (Value.t, Error.t) result =
       | _ ->
           failwith ("Imposible cannot apply to non-function: " ^ Value.show func)
       )
-  | EExt _ -> failwith "impossible eval void"
 
 and force (v : Value.t) : (Value.t, Error.t) result =
   let open Result.Syntax in
@@ -88,14 +87,14 @@ let binding (b : Tast.bind) (ctx : tm_ctx) :
   Result.map_error
     (fun e -> [ e ])
     (match b with
-    | Def (_, _name, expr) ->
+    | Def (_, _, _name, expr) ->
         let* value = eval expr ctx in
         Ok (value, ctx))
 
 let defer_binding (b : Tast.bind) (ctx : tm_ctx) :
     (Value.t * tm_ctx, Error.t list) result =
   match b with
-  | Def (_, name, expr) ->
+  | Def (_, _, name, expr) ->
       let fixpoint = fix name expr ctx in
       let ctx' = define name fixpoint ctx in
       Ok (fixpoint, ctx')
@@ -104,7 +103,7 @@ let find_entrypoint entrypoint bindings : Tast.bind option =
   List.find_opt
     (fun b ->
       match b with
-      | Tast.Def (_, name, _) -> name = entrypoint)
+      | Tast.Def (_, _, name, _) -> name = entrypoint)
     bindings
 
 let module_ entrypoint (m : Tast.modu) : Value.t t =
