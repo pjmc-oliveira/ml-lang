@@ -15,6 +15,9 @@ let keywords =
     ("then", Then);
     ("else", Else);
     ("forall", Forall);
+    ("match", Match);
+    ("with", With);
+    ("end", End);
     ("True", Bool true);
     ("False", Bool false);
   ]
@@ -34,6 +37,7 @@ let token src : (Token.t * Source.span * Source.t, Error.t) result =
       | ':' -> Ok (Colon, span, src')
       | '\\' -> Ok (BackSlash, span, src')
       | '.' -> Ok (Dot, span, src')
+      | '|' -> Ok (Pipe, span, src')
       (* TODO: Clean this up *)
       | '-' -> (
           match Source.next src' with

@@ -7,6 +7,9 @@ type t =
   | If
   | Then
   | Else
+  | Match
+  | With
+  | End
   | Forall
   (* Symbols *)
   | Equal
@@ -18,6 +21,7 @@ type t =
   | BackSlash
   | Arrow
   | Dot
+  | Pipe
   (* Literals *)
   | LowerIdent of string
   | UpperIdent of string
@@ -34,6 +38,9 @@ let to_string = function
   | If -> "if"
   | Then -> "then"
   | Else -> "else"
+  | Match -> "match"
+  | With -> "with"
+  | End -> "end"
   | Forall -> "forall"
   (* Symbols *)
   | Equal -> "="
@@ -45,6 +52,7 @@ let to_string = function
   | BackSlash -> "\\"
   | Arrow -> "->"
   | Dot -> "."
+  | Pipe -> "|"
   (* Literals *)
   | LowerIdent s -> s
   | UpperIdent s -> s

@@ -240,7 +240,7 @@ let type_scheme () : Cst.scheme t =
 let rec expression () : Cst.expr t =
   one_of
     (error [ Text "Expected expression" ])
-    [ let_in (); if_then_else (); lambda (); annotation () ]
+    [ let_in (); if_then_else (); lambda (); match_with (); annotation () ]
 
 and let_in () =
   with_span
@@ -270,6 +270,24 @@ and lambda () =
      let* param_t = optional (accept Colon *> type_ () <* expect Dot) in
      let* body = expression () in
      pure (fun span -> Cst.ELam (span, param, param_t, body)))
+
+and match_with () =
+  with_span
+    (let* _ = accept Match in
+     let* expr = expression () in
+     let* _ = expect With in
+     let* alts = alternatives () in
+     let* _ = expect End in
+     pure (fun span -> Cst.EMatch (span, expr, alts)))
+
+and alternatives () =
+  some
+    (let* _ = accept Pipe in
+     let* head = upper_identifier in
+     let* vars = many lower_identifier in
+     let* _ = expect Arrow in
+     let* body = expression () in
+     pure (Cst.PCon (head, vars), body))
 
 and annotation () =
   with_span

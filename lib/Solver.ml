@@ -235,6 +235,7 @@ module Core = struct
         let arg_vars = free_vars arg in
         StrSet.union func_vars arg_vars
     | EAnn (_, expr, _) -> free_vars expr
+    | EMatch _ -> failwith "TODO free_vars EMatch"
 
   (** Gets the free terms of an expression, removing terms in the ctx *)
   let get_free_terms (ctx : ty_ctx) (bindings : Cst.bind list) =
@@ -329,6 +330,7 @@ module Engine = struct
         let* expr_t, expr = infer expr in
         let* _ = Core.constrain expr_t ann_t in
         with_type expr
+    | EMatch _ -> failwith "TODO infer EMatch"
 end
 
 (** Infers the type of a single binding *)

@@ -195,6 +195,28 @@ let ast_tests =
                  "hello",
                  ELam ("f", None, EApp (EVar "f", ELit (Int 1))) );
            ] ));
+    test_parser_ast "match expression with custom constructor"
+      "module Hello = {
+        def hello =
+          match foo with
+            | Wibble x y -> 1
+            | Wobble -> 0
+          end
+      }"
+      (Module
+         ( "Hello",
+           [
+             Def
+               ( None,
+                 "hello",
+                 EMatch
+                   ( EVar "foo",
+                     [
+                       (PCon ("Wibble", [ "x"; "y" ]), ELit (Int 1));
+                       (PCon ("Wobble", []), ELit (Int 0));
+                     ] ) );
+           ] ))
+    (* TODO: Match on Bool *);
   ]
 
 let suite = "Parser" >::: cst_tests @ ast_tests

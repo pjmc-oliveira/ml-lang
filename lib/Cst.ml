@@ -17,6 +17,7 @@ let map_scheme f = function
   | TForall (x, tvars, ty) -> TForall (f x, tvars, ty)
 
 type lit = Int of int | Bool of bool [@@deriving show]
+type pat = PCon of string * string list [@@deriving show]
 
 type expr =
   | ELit of Source.Span.t * lit
@@ -26,6 +27,7 @@ type expr =
   | ELam of Source.Span.t * string * ty option * expr
   | EApp of Source.Span.t * expr * expr
   | EAnn of Source.Span.t * expr * ty
+  | EMatch of Source.Span.t * expr * (pat * expr) list
 [@@deriving show]
 
 type bind = Def of Source.Span.t * string * scheme option * expr
@@ -42,6 +44,7 @@ let map_expr (f : Source.span -> Source.span) (e : expr) =
   | ELam (x, param, param_t, body) -> ELam (f x, param, param_t, body)
   | EApp (x, func, arg) -> EApp (f x, func, arg)
   | EAnn (x, expr, ty) -> EAnn (f x, expr, ty)
+  | EMatch (x, expr, alts) -> EMatch (f x, expr, alts)
 
 let rec ty_to_ast (t : ty) : Ast.ty =
   match t with
@@ -90,6 +93,13 @@ let rec expr_to_ast (e : expr) : Ast.expr =
       let expr = expr_to_ast expr in
       let ty = ty_to_ast ty in
       EAnn (expr, ty)
+  | EMatch (_, expr, alts) ->
+      let expr = expr_to_ast expr in
+      EMatch (expr, List.map pat_to_ast alts)
+
+and pat_to_ast (pat, expr) =
+  match pat with
+  | PCon (con, vars) -> (Ast.PCon (con, vars), expr_to_ast expr)
 
 let bind_to_ast (b : bind) : Ast.bind =
   match b with
