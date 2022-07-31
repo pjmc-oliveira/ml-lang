@@ -5,6 +5,7 @@ type expr =
   | EVar of Type.mono * Source.Span.t * string
   | ELet of Type.mono * Source.Span.t * string * expr * expr
   | EIf of Type.mono * Source.Span.t * expr * expr * expr
+  (* Type of [param] to [body] *)
   | ELam of Type.mono * Type.mono * Source.Span.t * string * expr
   | EApp of Type.mono * Source.Span.t * expr * expr
 [@@deriving show]
