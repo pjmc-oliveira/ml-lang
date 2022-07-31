@@ -119,9 +119,9 @@ module Mono (S : Solver.S) = struct
              (TyCtx.of_list [ ("hello", Type.(mono Int)) ]);
            test_solver "function application"
              "module Hello = {
-                 def identity = \\x : Int. x
-                 def hello = identity 1
-               }"
+                def identity = \\x : Int. x
+                def hello = identity 1
+              }"
              (TyCtx.of_list
                 [
                   ("identity", Type.(mono (Arrow (Int, Int))));
@@ -129,14 +129,14 @@ module Mono (S : Solver.S) = struct
                 ]);
            test_solver "infer function application"
              "module Hello = {
-                 def hello = (\\x \\y x) True 0
-               }"
+                def hello = (\\x \\y x) True 0
+              }"
              (TyCtx.of_list [ ("hello", Type.(mono Bool)) ]);
            test_solver "nested function application"
              "module Hello = {
-                 def identity = \\x : Int. x
-                 def hello = identity (identity 1)
-               }"
+                def identity = \\x : Int. x
+                def hello = identity (identity 1)
+              }"
              (TyCtx.of_list
                 [
                   ("identity", Type.(mono (Arrow (Int, Int))));
@@ -144,16 +144,16 @@ module Mono (S : Solver.S) = struct
                 ]);
            test_solver "can solve annotated higher order function"
              "module Hello = {
-                 def hello : (Int -> Int) -> Int = \\f
-                   f 1
-               }"
+                def hello : (Int -> Int) -> Int = \\f
+                  f 1
+              }"
              (TyCtx.of_list
                 [ ("hello", Type.(mono (Arrow (Arrow (Int, Int), Type.Int)))) ]);
            test_solver "can solve un-annotated higher order function"
              "module Hello = {
-                 def hello = \\f
-                   f 1
-               }"
+                def hello = \\f
+                  f 1
+              }"
              (TyCtx.of_list
                 [
                   ( "hello",
@@ -163,10 +163,10 @@ module Mono (S : Solver.S) = struct
                 ]);
            test_solver ~initial_ctx:BuiltIns.ty_ctx "built-in functions"
              "module Hello = {
-                 def my_add = \\x : Int. \\y : Int.
-                   add x y
-                 def main = my_add 1 2
-               }"
+                def my_add = \\x : Int. \\y : Int.
+                  add x y
+                def main = my_add 1 2
+              }"
              TyCtx.(
                union BuiltIns.ty_ctx
                  (of_list
@@ -176,33 +176,33 @@ module Mono (S : Solver.S) = struct
                     ]));
            test_solver ~initial_ctx:BuiltIns.ty_ctx "recursive let binding"
              "module Hello = {
-                 def main =
-                   let fact : Int -> Int = \\x
-                     if eq 0 x then
-                       1
-                     else
-                       mul x (fact (sub x 1))
-                   in
-                     fact
-               }"
+                def main =
+                  let fact : Int -> Int = \\x
+                    if eq 0 x then
+                      1
+                    else
+                      mul x (fact (sub x 1))
+                  in
+                    fact
+              }"
              TyCtx.(
                union BuiltIns.ty_ctx
                  (of_list [ ("main", Type.(mono (Arrow (Int, Int)))) ]));
            test_solver ~initial_ctx:BuiltIns.ty_ctx
              "annotated mutually recursive functions"
              "module Hello = {
-                   def is_even : Int -> Bool = \\x
-                     if eq 0 x then
-                       True
-                     else
-                       not (is_odd (sub x 1))
+                def is_even : Int -> Bool = \\x
+                  if eq 0 x then
+                    True
+                  else
+                    not (is_odd (sub x 1))
 
-                   def is_odd : Int -> Bool = \\x
-                     if eq 0 x then
-                       False
-                     else
-                       not (is_even (sub x 1))
-                 }"
+                def is_odd : Int -> Bool = \\x
+                  if eq 0 x then
+                    False
+                  else
+                    not (is_even (sub x 1))
+              }"
              TyCtx.(
                union BuiltIns.ty_ctx
                  (of_list
@@ -213,18 +213,18 @@ module Mono (S : Solver.S) = struct
            test_solver ~initial_ctx:BuiltIns.ty_ctx
              "un-annotated mutually recursive functions"
              "module Hello = {
-                   def is_even = \\x
-                     if eq 0 x then
-                       True
-                     else
-                       not (is_odd (sub x 1))
+                def is_even = \\x
+                  if eq 0 x then
+                    True
+                  else
+                    not (is_odd (sub x 1))
 
-                   def is_odd = \\x
-                     if eq 0 x then
-                       False
-                     else
-                       not (is_even (sub x 1))
-                 }"
+                def is_odd = \\x
+                  if eq 0 x then
+                    False
+                  else
+                    not (is_even (sub x 1))
+              }"
              TyCtx.(
                union BuiltIns.ty_ctx
                  (of_list
@@ -234,9 +234,9 @@ module Mono (S : Solver.S) = struct
                     ]));
            test_solver "mutually recursive definitionns"
              "module Hello = {
-                   def ping = ping
-                   def pong = pong
-                 }"
+                def ping = ping
+                def pong = pong
+              }"
              (TyCtx.of_list
                 [
                   ("ping", Type.(Poly ([ "t0" ], Var "t0")));
@@ -269,9 +269,9 @@ module Mono (S : Solver.S) = struct
              [ [ Text "Cannot a apply to non-function values" ] ];
            test_failure "wrong argument type"
              "module Hello = {
-              def identity = \\x : Int. x
-              def main = identity True
-            }"
+                def identity = \\x : Int. x
+                def main = identity True
+              }"
              [
                [
                  Text "Wrong argument type";

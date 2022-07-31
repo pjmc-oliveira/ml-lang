@@ -1,6 +1,8 @@
 open Extensions
 module TyCtx = Ctx.Make (String)
+module StrMap = Map.Make (String)
 module StrSet = Set.Make (String)
+module StrSCC = SCC.Make (String)
 module Tast = Syn.Tast
 module Cst = Syn.Cst
 
@@ -209,6 +211,50 @@ module Core = struct
         let to_ = free_ty_vars to_ in
         StrSet.union from to_
 
+  (** Gets the free variables of an expression *)
+  let rec free_vars : Cst.expr -> StrSet.t = function
+    | ELit _ -> StrSet.empty
+    | EVar (_, name) -> StrSet.singleton name
+    | ELet (_, name, def, body) ->
+        let def_vars = free_vars def in
+        let body_vars = free_vars body in
+        StrSet.(filter (fun v -> not (v = name)) (union def_vars body_vars))
+    | EIf (_, cond, con, alt) ->
+        let cond_vars = free_vars cond in
+        let con_vars = free_vars con in
+        let alt_vars = free_vars alt in
+        StrSet.(union cond_vars (union con_vars alt_vars))
+    | ELam (_, param, body) ->
+        let body_vars = free_vars body in
+        StrSet.filter (fun v -> not (v = param)) body_vars
+    | EApp (_, func, arg) ->
+        let func_vars = free_vars func in
+        let arg_vars = free_vars arg in
+        StrSet.union func_vars arg_vars
+    | EExt (`Ann (_, expr, _)) -> free_vars expr
+
+  (** Gets the free terms of an expression, removing terms in the ctx *)
+  let get_free_terms (ctx : ty_ctx) (bindings : Cst.bind list) =
+    let free_terms =
+      List.map
+        (fun (Cst.Def (_, name, expr)) -> (name, free_vars expr))
+        bindings
+    in
+    let list_of_set s = List.of_seq (StrSet.to_seq s) in
+    let free_terms =
+      List.map
+        (fun (name, vars) ->
+          ( name,
+            List.filter
+              (fun v ->
+                match TyCtx.lookup v ctx with
+                | None -> true
+                | Some _ -> false)
+              (list_of_set vars) ))
+        free_terms
+    in
+    StrMap.of_seq (List.to_seq free_terms)
+
   (** Generalizes a monophorphic type to a polymmorphic type *)
   let generalize (ty : Type.mono) : Type.poly =
     let ty_vars = List.of_seq (StrSet.to_seq (free_ty_vars ty)) in
@@ -326,7 +372,7 @@ let infer_bindings (bindings : Cst.bind list) : Tast.bind list T.t =
   local (TyCtx.union top_level) (accumulate_list infer_binding bindings)
 
 (** Solves the types of a bind group *)
-let solve_bindings (ctx : ty_ctx) (bindings : Cst.bind list) =
+let solve_binding_group (ctx : ty_ctx) (bindings : Cst.bind list) =
   match infer_bindings bindings ctx 0 with
   | Error es -> Error es
   | Ok (bindings, cs, s) -> (
@@ -347,6 +393,39 @@ let solve_bindings (ctx : ty_ctx) (bindings : Cst.bind list) =
                      in
                      Tast.Def ((scheme, span), name, expr))
                bindings))
+
+(** Solves all bindings one strongly connected componenent at a time *)
+let solve_bindings (ctx : ty_ctx) (bindings : Cst.bind list) =
+  let free_terms = Core.get_free_terms ctx bindings in
+  let scc = StrSCC.(run (make free_terms)) in
+  let top_level =
+    StrMap.of_seq
+      (List.to_seq
+         (List.map
+            (fun (Cst.Def (_, name, _) as bind) -> (name, bind))
+            bindings))
+  in
+  let groups =
+    List.map (List.filter_map (fun name -> StrMap.find_opt name top_level)) scc
+  in
+  let result =
+    StateResult.traverse_list
+      (fun bs ctx ->
+        match solve_binding_group ctx bs with
+        | Error e -> Error e
+        | Ok bs' ->
+            let new_ctx =
+              List.fold_left
+                (fun ctx (Tast.Def ((ty, _), name, _)) ->
+                  TyCtx.insert name ty ctx)
+                ctx bs'
+            in
+            Ok (bs', new_ctx))
+      groups ctx
+  in
+  match result with
+  | Error e -> Error e
+  | Ok (bind_bind, _s) -> Ok (List.flatten bind_bind)
 
 (** Infers the type of a module *)
 let module_ (m : Cst.modu) (ctx : ty_ctx) : (Tast.modu, Error.t list) result =

@@ -10,6 +10,7 @@ let tests =
       MonoTests.suite;
       PolyTests.suite;
       InterpreterTests.suite;
+      SCCTests.suite;
     ]
 
 let () = run_test_tt_main tests
