@@ -243,6 +243,11 @@ let ast_tests =
                 ( "AType",
                   [ ("Wibble", [ TCon "Int"; TCon "Bool" ]); ("Wobble", []) ] );
             ] ));
+    test_parser_ast "type constructors are expressions"
+      "module Hello = {
+        def wibble = Wibble
+      }"
+      Ast.(Module ("Hello", [ Def (None, "wibble", EVar "Wibble") ]));
   ]
 
 let suite = "Parser" >::: cst_tests @ ast_tests

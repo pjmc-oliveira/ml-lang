@@ -321,6 +321,7 @@ and atom () =
      | Int value -> pure (fun span -> Cst.(ELit (span, Int value)))
      | Bool value -> pure (fun span -> Cst.(ELit (span, Bool value)))
      | LowerIdent name -> pure (fun span -> Cst.EVar (span, name))
+     | UpperIdent name -> pure (fun span -> Cst.EVar (span, name))
      | LeftParen ->
          let* expr = expression () in
          let* _ = expect RightParen in
