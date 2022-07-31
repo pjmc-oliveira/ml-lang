@@ -200,6 +200,19 @@ let suite =
               def main = wibble1 True
             }"
            (Con { head = "Wibble"; tail = [ Int 1; Bool true ] });
+         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+           "match expression"
+           "module Hello = {
+              type Nat = Zero | Succ Nat
+              def two = Succ (Succ Zero)
+              def count = \\x
+                match x with
+                  | Zero -> 0
+                  | Succ y -> add 1 (count y)
+                end
+              def main = count two
+            }"
+           (Int 2);
          (* Failure *)
          test_failure "local scope"
            "module Hello = { def foo = let x = 1 in x def main = x }"

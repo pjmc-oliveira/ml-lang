@@ -68,7 +68,26 @@ let rec eval (e : Tast.expr) (ctx : tm_ctx) : (Value.t, Error.t) result =
       | _ ->
           failwith ("Imposible cannot apply to non-function: " ^ Value.show func)
       )
-  | EMatch _ -> failwith "TODO eval EMatch"
+  | EMatch (_, _, expr, alts) -> (
+      let* expr = eval expr ctx in
+      (* TODO: should only evaluate to weak head normal form *)
+      let* expr = force expr in
+      match expr with
+      | Con { head; tail } -> (
+          match
+            List.find_opt (fun (Tast.PCon (name, _), _) -> name = head) alts
+          with
+          | None -> failwith ("Un-matched pattern: " ^ Value.show expr)
+          | Some (PCon (_, vars), case) ->
+              let ctx' =
+                List.fold_left
+                  (fun ctx (name, value) -> define name value ctx)
+                  ctx (List.zip vars tail)
+              in
+              eval case ctx')
+      | _ ->
+          failwith
+            ("Imposible cannot match to non-constructor: " ^ Value.show expr))
 
 and force (v : Value.t) : (Value.t, Error.t) result =
   let open Result.Syntax in
