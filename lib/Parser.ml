@@ -336,11 +336,15 @@ let def : (Source.span -> Cst.bind) t =
   pure (fun span -> Cst.Def (span, name, ann, expr))
 
 let ty_alternatives =
-  some
-    (let* _ = accept Pipe in
-     let* head = upper_identifier in
-     let* tys = many (type_ ()) in
-     pure (head, tys))
+  let single_alt =
+    let* head = upper_identifier in
+    let* tys = many (type_ ()) in
+    pure (head, tys)
+  in
+  let* _ = optional (accept Pipe) in
+  let* alt = single_alt in
+  let* alts = many (accept Pipe *> single_alt) in
+  pure (alt :: alts)
 
 let ty_def : (Source.span -> Cst.bind) t =
   let* _ = accept Type in

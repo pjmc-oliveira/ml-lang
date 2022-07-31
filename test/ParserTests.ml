@@ -231,6 +231,18 @@ let ast_tests =
                 ( "AType",
                   [ ("Wibble", [ TCon "Int"; TCon "Bool" ]); ("Wobble", []) ] );
             ] ));
+    test_parser_ast "type definition may ommit first pipe"
+      "module Hello = {
+        type AType = Wibble Int Bool | Wobble
+      }"
+      Ast.(
+        Module
+          ( "Hello",
+            [
+              Type
+                ( "AType",
+                  [ ("Wibble", [ TCon "Int"; TCon "Bool" ]); ("Wobble", []) ] );
+            ] ));
   ]
 
 let suite = "Parser" >::: cst_tests @ ast_tests
