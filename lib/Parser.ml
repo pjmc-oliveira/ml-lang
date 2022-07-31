@@ -199,7 +199,6 @@ end
 open Combinator
 open Combinator.Syntax
 open Combinator.Infix
-module Cst = Syn.Cst
 
 let toplevel =
   let* () = drop_until (fun t -> t = Def) in

@@ -1,6 +1,4 @@
 module TyCtx = Ctx.Make (String)
-module Tast = Syn.Tast
-module Cst = Syn.Cst
 
 type ty_ctx = Type.poly TyCtx.t
 

@@ -3,8 +3,6 @@ module TyCtx = Ctx.Make (String)
 module StrMap = Map.Make (String)
 module StrSet = Set.Make (String)
 module StrSCC = SCC.Make (String)
-module Tast = Syn.Tast
-module Cst = Syn.Cst
 
 type ty_ctx = Type.poly TyCtx.t
 type constraints = (Type.mono * Type.mono) list

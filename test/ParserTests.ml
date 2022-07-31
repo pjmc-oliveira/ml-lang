@@ -11,7 +11,7 @@ let parse_module str =
 
 let string_of_cst_result r =
   match r with
-  | Ok m -> "Ok " ^ Syn.Cst.show_modu m
+  | Ok m -> "Ok " ^ Cst.show_modu m
   | Error e -> "Error " ^ String.concat "\n" (List.map Error.to_string e)
 
 let test_parser_cst label str cst =
@@ -20,17 +20,17 @@ let test_parser_cst label str cst =
 
 let string_of_ast_result r =
   match r with
-  | Ok m -> "Ok " ^ Syn.Ast.show_modu m
+  | Ok m -> "Ok " ^ Ast.show_modu m
   | Error e -> "Error " ^ String.concat "\n" (List.map Error.to_string e)
 
 let test_parser_ast label str ast =
   label >:: fun _ ->
   assert_equal (Ok ast)
-    (Result.map Syn.Cst.to_ast (parse_module str))
+    (Result.map Cst.to_ast (parse_module str))
     ~printer:string_of_ast_result
 
 let cst_tests =
-  let open Syn.Cst in
+  let open Cst in
   [
     test_parser_cst "empty module" "module Hello = {}"
       (Module ({ index = 0; line = 1; column = 1; length = 17 }, "Hello", []));

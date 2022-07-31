@@ -1,8 +1,6 @@
 open Extensions
 module TyCtx = Ctx.Make (String)
 module StrSet = Set.Make (String)
-module Tast = Syn.Tast
-module Cst = Syn.Cst
 
 type ty_ctx = Type.poly TyCtx.t
 type subst = (string * Type.mono) list

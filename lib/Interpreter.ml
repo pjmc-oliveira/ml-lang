@@ -1,6 +1,5 @@
 open Extensions
 module TmCtx = Ctx.Make (String)
-module Tast = Syn.Tast
 
 type tm_ctx = Value.t TmCtx.t
 

@@ -1,5 +1,4 @@
 module TmCtx = Ctx.Make (String)
-module Tast = Syn.Tast
 
 type t =
   | Int of int
