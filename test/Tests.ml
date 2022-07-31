@@ -1,7 +1,7 @@
 open OUnit2
 open Ml_lang
-module MonoTests = SolverTests.Mono (Robinson)
-module PolyTests = SolverTests.Poly (Robinson)
+module MonoTests = SolverTests.Mono (Solver)
+module PolyTests = SolverTests.Poly (Solver)
 
 let tests =
   test_list
