@@ -241,7 +241,9 @@ module Core = struct
   let get_free_terms (ctx : ty_ctx) (bindings : Cst.bind list) =
     let free_terms =
       List.map
-        (fun (Cst.Def (_, name, _, expr)) -> (name, free_vars expr))
+        (function
+          | Cst.Def (_, name, _, expr) -> (name, free_vars expr)
+          | Cst.Type _ -> failwith "TODO get_free_terms TyDef")
         bindings
     in
     let list_of_set s = List.of_seq (StrSet.to_seq s) in
@@ -358,20 +360,23 @@ let infer_binding (b : Cst.bind) : Tast.bind T.t =
       let* _ = make_constr name expr_t in
       let ty = Core.generalize expr_t in
       pure (Tast.Def (ty, span, name, expr))
+  | Cst.Type _ -> failwith "TODO infer_binding TyDef"
 
 (** Infers the types of a bind group *)
 let infer_bindings (bindings : Cst.bind list) : Tast.bind list T.t =
   let open T in
   let* top_level =
     bindings
-    |> traverse_list (fun (Cst.Def (_, name, ann, _)) ->
-           match ann with
-           | None ->
-               let* ty = Core.fresh_var in
-               pure (name, Type.mono ty)
-           | Some ann ->
-               let* ty = Resolve.scheme ann in
-               pure (name, ty))
+    |> traverse_list (function
+         | Cst.Def (_, name, ann, _) -> (
+             match ann with
+             | None ->
+                 let* ty = Core.fresh_var in
+                 pure (name, Type.mono ty)
+             | Some ann ->
+                 let* ty = Resolve.scheme ann in
+                 pure (name, ty))
+         | Cst.Type _ -> failwith "TODO infer_bindings TyDef")
   in
   let top_level = TyCtx.of_list top_level in
   local (TyCtx.union top_level) (accumulate_list infer_binding bindings)
@@ -407,7 +412,9 @@ let solve_bindings (ctx : ty_ctx) (bindings : Cst.bind list) =
     StrMap.of_seq
       (List.to_seq
          (List.map
-            (fun (Cst.Def (_, name, _, _) as bind) -> (name, bind))
+            (function
+              | Cst.Def (_, name, _, _) as bind -> (name, bind)
+              | Cst.Type _ -> failwith "TODO solve_bindings TyDef")
             bindings))
   in
   let groups =

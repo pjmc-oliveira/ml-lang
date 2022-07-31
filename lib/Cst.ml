@@ -30,10 +30,16 @@ type expr =
   | EMatch of Source.Span.t * expr * (pat * expr) list
 [@@deriving show]
 
-type bind = Def of Source.Span.t * string * scheme option * expr
+type alt = string * ty list [@@deriving show]
+
+type bind =
+  | Def of Source.Span.t * string * scheme option * expr
+  | Type of Source.Span.t * string * alt list
 [@@deriving show]
 
 type modu = Module of Source.Span.t * string * bind list [@@deriving show]
+
+(* Helpers *)
 
 let map_expr (f : Source.span -> Source.span) (e : expr) =
   match e with
@@ -101,10 +107,13 @@ and pat_to_ast (pat, expr) =
   match pat with
   | PCon (con, vars) -> (Ast.PCon (con, vars), expr_to_ast expr)
 
+let alt_to_ast (head, tys) = (head, List.map ty_to_ast tys)
+
 let bind_to_ast (b : bind) : Ast.bind =
   match b with
   | Def (_, name, scheme, expr) ->
       Def (Option.map scheme_to_ast scheme, name, expr_to_ast expr)
+  | Type (_, name, alts) -> Type (name, List.map alt_to_ast alts)
 
 let to_ast (m : modu) : Ast.modu =
   match m with

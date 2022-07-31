@@ -18,6 +18,7 @@ let keywords =
     ("match", Match);
     ("with", With);
     ("end", End);
+    ("type", Type);
     ("True", Bool true);
     ("False", Bool false);
   ]

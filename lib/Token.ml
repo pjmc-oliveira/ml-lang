@@ -11,6 +11,7 @@ type t =
   | With
   | End
   | Forall
+  | Type
   (* Symbols *)
   | Equal
   | LeftBrace
@@ -42,6 +43,7 @@ let to_string = function
   | With -> "with"
   | End -> "end"
   | Forall -> "forall"
+  | Type -> "type"
   (* Symbols *)
   | Equal -> "="
   | LeftBrace -> "{"

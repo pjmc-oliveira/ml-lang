@@ -335,8 +335,24 @@ let def : (Source.span -> Cst.bind) t =
   let* expr = expression () in
   pure (fun span -> Cst.Def (span, name, ann, expr))
 
+let ty_alternatives =
+  some
+    (let* _ = accept Pipe in
+     let* head = upper_identifier in
+     let* tys = many (type_ ()) in
+     pure (head, tys))
+
+let ty_def : (Source.span -> Cst.bind) t =
+  let* _ = accept Type in
+  let* name = upper_identifier in
+  let* _ = expect Equal in
+  let* alts = ty_alternatives in
+  pure (fun span -> Cst.Type (span, name, alts))
+
 let binding : Cst.bind t =
-  let* b, sp = span_of (one_of (error [ Text "Expected binding" ]) [ def ]) in
+  let* b, sp =
+    span_of (one_of (error [ Text "Expected binding" ]) [ def; ty_def ])
+  in
   pure (b sp)
 
 let module_ : Cst.modu t =

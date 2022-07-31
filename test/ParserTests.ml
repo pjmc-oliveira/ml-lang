@@ -217,6 +217,20 @@ let ast_tests =
                      ] ) );
            ] ))
     (* TODO: Match on Bool *);
+    test_parser_ast "type definition"
+      "module Hello = {
+        type AType =
+          | Wibble Int Bool
+          | Wobble
+      }"
+      Ast.(
+        Module
+          ( "Hello",
+            [
+              Type
+                ( "AType",
+                  [ ("Wibble", [ TCon "Int"; TCon "Bool" ]); ("Wobble", []) ] );
+            ] ));
   ]
 
 let suite = "Parser" >::: cst_tests @ ast_tests

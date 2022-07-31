@@ -14,5 +14,9 @@ type expr =
   | EMatch of expr * (pat * expr) list
 [@@deriving show]
 
-type bind = Def of scheme option * string * expr [@@deriving show]
+type alt = string * ty list [@@deriving show]
+
+type bind = Def of scheme option * string * expr | Type of string * alt list
+[@@deriving show]
+
 type modu = Module of string * bind list [@@deriving show]
