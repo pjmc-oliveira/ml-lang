@@ -213,6 +213,50 @@ let suite =
               def main = count two
             }"
            (Int 2);
+         (let tm_ctx =
+            TmCtx.union BuiltIns.tm_ctx
+              (TmCtx.of_list
+                 [
+                   ( "exit",
+                     Value.(
+                       lift (fun x ->
+                           let x = get_int x in
+                           failwith ("Failed with: " ^ string_of_int x))) );
+                 ])
+          in
+          let ty_ctx =
+            TyCtx.union BuiltIns.ty_ctx
+              (TyCtx.of_terms_list [ ("exit", Type.(mono (Arrow (Int, Int)))) ])
+          in
+          test_interpreter ~tm_ctx ~ty_ctx
+            "match expression should only evaluate to weak-head normal form"
+            "module Hello = {
+              type List = Nil | Cons Int List
+              def list = Cons (exit 1) Nil
+
+              def main =
+                match list with
+                  | Nil -> False
+                  | Cons x xs -> True
+                end
+            }"
+            (Bool true));
+         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+           "run a simple program"
+           "module Hello = {
+               type List =
+                 | Nil
+                 | Cons Int List
+
+               def fold_right = \\f \\base \\list
+                 match list with
+                   | Nil -> base
+                   | Cons x xs -> f x (fold_right f base xs)
+                 end
+
+               def main = fold_right add 0 (Cons 1 (Cons 2 (Cons 3 Nil)))
+             }"
+           (Int 6);
          (* Failure *)
          test_failure "local scope"
            "module Hello = { def foo = let x = 1 in x def main = x }"

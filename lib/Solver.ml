@@ -512,8 +512,9 @@ let solve_def_group (ctx : ty_ctx) (defs : Cst.tm_def list) =
                        |> Core.generalize
                      in
                      let subst', scheme = Core.normalize_scheme scheme in
+                     (* Apply new substitution first *)
                      let expr =
-                       Tast.map_type (Core.apply (subst @ subst')) expr
+                       Tast.map_type (Core.apply (subst' @ subst)) expr
                      in
                      Tast.TmDef { scheme; span; name; expr })
                defs))

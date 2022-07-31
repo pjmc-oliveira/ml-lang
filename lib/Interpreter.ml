@@ -30,6 +30,7 @@ let defer (expr : Tast.expr) (ctx : tm_ctx) : Value.t =
 
 let fix name expr ctx = Value.Fix { ctx; name; expr }
 
+(** Evaluate an expression in a context *)
 let rec eval (e : Tast.expr) (ctx : tm_ctx) : (Value.t, Error.t) result =
   let open Result.Syntax in
   match e with
@@ -51,7 +52,8 @@ let rec eval (e : Tast.expr) (ctx : tm_ctx) : (Value.t, Error.t) result =
   | EApp (_, _, func, arg) -> (
       let arg' = defer arg ctx in
       let* func = eval func ctx in
-      let* func = force func in
+      (* Only evaluate to WHNF so that we can apply the constructor lazily *)
+      let* func = whnf func in
       match func with
       | Closure { ctx = closure_ctx; param; body } ->
           let closure_ctx' = define param arg' closure_ctx in
@@ -70,8 +72,7 @@ let rec eval (e : Tast.expr) (ctx : tm_ctx) : (Value.t, Error.t) result =
       )
   | EMatch (_, _, expr, alts) -> (
       let* expr = eval expr ctx in
-      (* TODO: should only evaluate to weak head normal form *)
-      let* expr = force expr in
+      let* expr = whnf expr in
       match expr with
       | Con { head; tail } -> (
           match
@@ -89,6 +90,25 @@ let rec eval (e : Tast.expr) (ctx : tm_ctx) : (Value.t, Error.t) result =
           failwith
             ("Imposible cannot match to non-constructor: " ^ Value.show expr))
 
+(** Force a value to weak-head normal form *)
+and whnf (v : Value.t) : (Value.t, Error.t) result =
+  let open Result.Syntax in
+  match v with
+  | Int n -> Ok (Value.Int n)
+  | Bool b -> Ok (Value.Bool b)
+  | Con { head; tail } -> Ok (Value.Con { head; tail })
+  | Closure f -> Ok (Value.Closure f)
+  | Thunk { ctx; expr } ->
+      let* expr = eval expr ctx in
+      whnf expr
+  | Native _ -> Ok v
+  | Fix { ctx; name; expr } ->
+      let ctx' = define name (Value.Fix { ctx; name; expr }) ctx in
+      let* expr = eval expr ctx' in
+      (* TODO: should this be a recursive or base call? *)
+      whnf expr
+
+(** Fully force a value to its normal form *)
 and force (v : Value.t) : (Value.t, Error.t) result =
   let open Result.Syntax in
   match v with

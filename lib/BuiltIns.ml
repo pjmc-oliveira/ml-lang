@@ -35,6 +35,12 @@ let tm_ctx =
               let x = get_int l in
               let y = get_int r in
               Bool (x = y))) );
+      ( "le",
+        Value.(
+          lift2 (fun l r ->
+              let x = get_int l in
+              let y = get_int r in
+              Bool (x <= y))) );
       ( "not",
         Value.(
           lift (fun b ->
@@ -50,5 +56,6 @@ let ty_ctx =
       ("mul", Type.(Poly ([], Arrow (Int, Arrow (Int, Int)))));
       ("div", Type.(Poly ([], Arrow (Int, Arrow (Int, Int)))));
       ("eq", Type.(Poly ([], Arrow (Int, Arrow (Int, Bool)))));
+      ("le", Type.(Poly ([], Arrow (Int, Arrow (Int, Bool)))));
       ("not", Type.(Poly ([], Arrow (Bool, Bool))));
     ]
