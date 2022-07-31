@@ -263,6 +263,13 @@ module Mono (S : Solver.S) = struct
                   ( "wobble2",
                     Type.(mono (Arrow (Int, Arrow (Bool, Con "AType")))) );
                 ]);
+           test_solver "custom recursive type"
+             "module Hello = {
+                type Nat = Zero | Succ Nat
+                def add1 = Succ
+              }"
+             (Ctx.of_terms_list
+                [ ("add1", Type.(mono (Arrow (Con "Nat", Con "Nat")))) ]);
            (* TODO: recursive types *)
            (* TODO: mutually recursive types *)
            (* TODO: polymorphic types *)
@@ -314,6 +321,12 @@ module Mono (S : Solver.S) = struct
                  Text ("But got: " ^ Type.show_mono Int);
                ];
              ];
+           test_failure "Wrong constructor type"
+             "module Hello = {
+                type Maybe = None | Some Int
+                def foo = Some True
+              }"
+             [ (* TODO: Add error message *) ];
          ]
 end
 

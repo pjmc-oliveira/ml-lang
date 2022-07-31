@@ -12,6 +12,11 @@ module Ctx = struct
   let insert name ty ctx = { ctx with terms = StrCtx.insert name ty ctx.terms }
   let lookup name ctx = StrCtx.lookup name ctx.terms
 
+  let insert_ty name kind ctx =
+    { ctx with types = StrCtx.insert name kind ctx.types }
+
+  let lookup_ty name ctx = StrCtx.lookup name ctx.types
+
   let of_terms_list terms_list =
     { types = StrCtx.empty; terms = StrCtx.of_list terms_list }
 
@@ -134,7 +139,11 @@ module Resolve = struct
         match name with
         | "Int" -> pure Type.Int
         | "Bool" -> pure Type.Bool
-        | _ -> Report.unbound_type name span)
+        | _ -> (
+            let* ctx = ask in
+            match Ctx.lookup_ty name ctx with
+            | None -> Report.unbound_type name span
+            | Some _ -> pure (Type.Con name)))
     | TVar (_, name) -> pure (Type.Var name)
     | TArr (_, from, to_) ->
         let* from = ty from in
@@ -304,8 +313,29 @@ module Core = struct
     (subst, Type.Poly (new_ty_vars, apply subst ty))
 end
 
+module KindEngine = struct
+  open T
+
+  (* infer types of constructors *)
+  let infer_constructor (ty : Type.mono) (alts : Cst.alt list) =
+    accumulate_list
+      (fun (con, tys) ->
+        let* tys = accumulate_list Resolve.ty tys in
+        let con_t = List.fold_right (fun l r -> Type.Arrow (l, r)) tys ty in
+        pure (con, Type.mono con_t))
+      alts
+
+  (* infer kinds of types *)
+  let infer_kind ((_, name, alts) : Cst.ty_def) =
+    let kind = Type.KType in
+    let* alts =
+      local (Ctx.insert_ty name kind) (infer_constructor (Type.Con name) alts)
+    in
+    pure (name, kind, alts)
+end
+
 (** The engine that drives the Core  *)
-module Engine = struct
+module TyEngine = struct
   open T
   open Tast
 
@@ -372,14 +402,14 @@ let infer_def (def : Cst.tm_def) : Tast.bind T.t =
   in
   match def with
   | span, name, None, expr ->
-      let* expr_t, expr = Engine.infer expr in
+      let* expr_t, expr = TyEngine.infer expr in
       let* _ = make_constr name expr_t in
       let ty = Core.generalize expr_t in
       pure (Tast.Def (ty, span, name, expr))
   | span, name, Some ann, expr ->
       let* ann_t = Resolve.scheme ann in
       let ann_t = Type.get_mono_type ann_t in
-      let* expr_t, expr = Engine.infer expr in
+      let* expr_t, expr = TyEngine.infer expr in
       let* _ = Core.constrain ann_t expr_t in
       let* _ = make_constr name expr_t in
       let ty = Core.generalize expr_t in
@@ -461,26 +491,15 @@ let solve_defs (ctx : ty_ctx) (defs : Cst.tm_def list) =
 let solve_types (ty_defs : Cst.ty_def list) =
   let open T in
   (* TODO: infer kind of each type *)
-  let new_types =
-    Ctx.of_types_list
-      (List.map (fun (_, name, _) -> (name, Type.KType)) ty_defs)
+  let* new_types = accumulate_list KindEngine.infer_kind ty_defs in
+  let types =
+    Ctx.of_types_list (List.map (fun (name, kind, _) -> (name, kind)) new_types)
   in
-  let infer_constructor ty_name (alts : Cst.alt list) =
-    accumulate_list
-      (fun (con, tys) ->
-        let* tys = accumulate_list Resolve.ty tys in
-        let con_t =
-          List.fold_right (fun l r -> Type.Arrow (l, r)) tys (Type.Con ty_name)
-        in
-        pure (con, Type.mono con_t))
-      alts
+  let constructors =
+    Ctx.of_terms_list
+      (List.flatten (List.map (fun (_, _, cons) -> cons) new_types))
   in
-  let* new_constructors =
-    accumulate_list (fun (_, name, alts) -> infer_constructor name alts) ty_defs
-  in
-  let new_constructors = List.flatten new_constructors in
-  let new_terms = Ctx.of_terms_list new_constructors in
-  pure (Ctx.union new_types new_terms)
+  pure (Ctx.union types constructors)
 
 (** Infers the type of a module *)
 let module_ (m : Cst.modu) (ctx : ty_ctx) : (Tast.modu, Error.t list) result =
