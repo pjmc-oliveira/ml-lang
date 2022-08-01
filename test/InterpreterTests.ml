@@ -242,21 +242,105 @@ let suite =
             }"
             (Bool true));
          test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
-           "run a simple program"
+           "program: fold_right"
            "module Hello = {
-               type List a =
-                 | Nil
-                 | Cons a (List a)
+              type List a =
+                | Nil
+                | Cons a (List a)
 
-               def fold_right = \\f \\base \\list
-                 match list with
-                   | Nil -> base
-                   | Cons x xs -> f x (fold_right f base xs)
-                 end
+              def fold_right = \\f \\base \\list
+                match list with
+                  | Nil -> base
+                  | Cons x xs -> f x (fold_right f base xs)
+                end
 
-               def main = fold_right add 0 (Cons 1 (Cons 2 (Cons 3 Nil)))
+              def main = fold_right add 0 (Cons 1 (Cons 2 (Cons 3 Nil)))
+            }"
+           (Int 6);
+         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+           "program: fib recursive"
+           "module Hello = {
+              def fib = \\n
+                if le n 0 then
+                  0
+                else if eq n 1 then
+                  1
+                else
+                  add (fib (sub n 1)) (fib (sub n 2))
+
+              def main = fib 6
+             }"
+           (Int 8);
+         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+           "program: fib iterative"
+           "module Hello = {
+              def fib_helper = \\a \\b \\n
+                if le n 1 then
+                  b
+                else
+                  fib_helper b (add a b) (sub n 1)
+
+              def fib = fib_helper 0 1
+
+              def main = fib 6
+             }"
+           (Int 8);
+         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+           "program: List map"
+           "module Hello = {
+              type List a = Nil | Cons a (List a)
+
+              def map = \\f \\ls
+                match ls with
+                  | Nil -> Nil
+                  | Cons x xs ->
+                    let y  = f x in
+                    let ys = map f xs in
+                    Cons y ys
+                end
+
+              def sum = \\ls
+                match ls with
+                  | Nil -> 0
+                  | Cons x xs -> add x (sum xs)
+                end
+
+              def main = sum (map (add 1) (Cons 0 (Cons 1 (Cons 2 Nil))))
              }"
            (Int 6);
+         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+           "program: List head"
+           "module Hello = {
+              type List a  = Nil | Cons a (List a)
+              type Maybe a = None | Some a
+
+              def head = \\ls
+                match ls with
+                  | Nil -> None
+                  | Cons x xs -> Some x
+                end
+
+              def main = head (Cons 1 Nil)
+             }"
+           (Con { head = "Some"; tail = [ Int 1 ] });
+         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+           "program: Maybe apply"
+           "module Hello = {
+              type Maybe a = None | Some a
+
+              def apply = \\tf \\tx
+                match tf with
+                  | None -> None
+                  | Some f ->
+                    match tx with
+                      | None -> None
+                      | Some x -> Some (f x)
+                    end
+                end
+
+              def main = apply (Some (add 1)) (Some 1)
+             }"
+           (Con { head = "Some"; tail = [ Int 2 ] });
          (* Failure *)
          test_failure "local scope"
            "module Hello = { def foo = let x = 1 in x def main = x }"
