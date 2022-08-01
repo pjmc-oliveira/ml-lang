@@ -11,6 +11,12 @@ type mono =
 
 type poly = Poly of string list * mono [@@deriving show]
 
+let rec pretty_kind = function
+  | KType -> "Type"
+  | KArrow ((KArrow _ as param), body) ->
+      "(" ^ pretty_kind param ^ ") -> " ^ pretty_kind body
+  | KArrow (param, body) -> pretty_kind param ^ " -> " ^ pretty_kind body
+
 let rec pretty_mono = function
   | Int -> "Int"
   | Bool -> "Bool"

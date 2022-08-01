@@ -315,7 +315,6 @@ module Mono (S : Solver.S) = struct
                         ("Zero", Type.(mono (Con "Nat")));
                       ]));
            (* TODO: mutually recursive types *)
-           (* TODO: polymorphic types *)
            test_solver "polymorphic type definition"
              "module Hello = {
                  type Maybe a = None | Some a
@@ -396,7 +395,6 @@ module Mono (S : Solver.S) = struct
                           )) );
                   ]);
            (* TODO: exhaustivity check for match-with *)
-           (* TODO: check kinds on type definitions *)
            (* Failures *)
            test_failure "let expression out-of-scope"
              "module Hello = { def foo = let x = 1 in x def main = x }"
@@ -469,6 +467,20 @@ module Mono (S : Solver.S) = struct
                     | Zero -> 0
                     | Succ -> 1
                   end
+              }"
+             [ (* TODO: Add error message *) ];
+           test_failure "Type definition with wrong kind"
+             "module Hello = {
+                type List a =
+                  | Nil
+                  | Cons a List
+              }"
+             [ (* TODO: Add error message *) ];
+           test_failure "Type definition with wrong kind"
+             "module Hello = {
+                type List a =
+                  | Nil
+                  | Cons a (Int a)
               }"
              [ (* TODO: Add error message *) ];
          ]

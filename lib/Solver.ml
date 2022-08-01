@@ -146,6 +146,27 @@ module Report = struct
 
   let failed_occurs_check name =
     fail [ error [ Text ("Failed occurs check: " ^ name) ] ]
+
+  let kind_mismatch expected actual =
+    fail
+      [
+        error
+          [
+            Text "Kind mismatch";
+            Text ("Expected: " ^ Type.pretty_kind expected);
+            Text ("But got: " ^ Type.pretty_kind actual);
+          ];
+      ]
+
+  let expected_kind_arrow actual =
+    fail
+      [
+        error
+          [
+            Text ("Expected kind: " ^ Type.(pretty_kind (KArrow (KType, KType))));
+            Text ("But got: " ^ Type.pretty_kind actual);
+          ];
+      ]
 end
 
 (** Resolve Cst type to Type *)
@@ -370,11 +391,40 @@ end
 module KindEngine = struct
   open T
 
+  let rec check_kind : Type.mono -> Type.kind t = function
+    | Int | Bool -> pure Type.KType
+    | Var _ -> (* TODO: Is this always true? *) pure Type.KType
+    | Con name -> (
+        let* ctx = ask in
+        match Ctx.lookup_ty name ctx with
+        | None -> failwith ""
+        | Some kind -> pure kind)
+    | App (func, arg) -> (
+        let* func = check_kind func in
+        let* arg = check_kind arg in
+        match func with
+        | KArrow (param, body) when arg = param -> pure body
+        | _ -> Report.expected_kind_arrow func)
+    | Arrow (param, body) ->
+        let* param = check_kind param in
+        let* body = check_kind body in
+        pure (Type.KArrow (param, body))
+
   (* infer types of constructors *)
   let infer_constructor (ty : Type.mono) (alts : Cst.alt list) =
     accumulate_list
       (fun (con, tys) ->
         let* tys = accumulate_list Resolve.ty tys in
+        let* _ =
+          traverse_list
+            (fun ty ->
+              let* kind = check_kind ty in
+              if kind = Type.KType then
+                pure ()
+              else
+                Report.kind_mismatch Type.KType kind)
+            tys
+        in
         let con_t = List.fold_right (fun l r -> Type.Arrow (l, r)) tys ty in
         (* TODO: Should this be normalized here? or later? *)
         let _, scheme = Core.normalize_scheme (Core.generalize con_t) in
