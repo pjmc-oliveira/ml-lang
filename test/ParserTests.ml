@@ -229,6 +229,7 @@ let ast_tests =
             [
               Type
                 ( "AType",
+                  [],
                   [ ("Wibble", [ TCon "Int"; TCon "Bool" ]); ("Wobble", []) ] );
             ] ));
     test_parser_ast "type definition may ommit first pipe"
@@ -241,6 +242,7 @@ let ast_tests =
             [
               Type
                 ( "AType",
+                  [],
                   [ ("Wibble", [ TCon "Int"; TCon "Bool" ]); ("Wobble", []) ] );
             ] ));
     test_parser_ast "type constructors are expressions"
@@ -248,6 +250,54 @@ let ast_tests =
         def wibble = Wibble
       }"
       Ast.(Module ("Hello", [ Def (None, "wibble", EVar "Wibble") ]));
+    test_parser_ast "polymorphic type definitions"
+      "module Hello = {
+        type Either a b =
+          | Left a
+          | Right b
+      }"
+      Ast.(
+        Module
+          ( "Hello",
+            [
+              Type
+                ( "Either",
+                  [ "a"; "b" ],
+                  [ ("Left", [ TVar "a" ]); ("Right", [ TVar "b" ]) ] );
+            ] ));
+    test_parser_ast "type application"
+      "module Hello = {
+        type Maybe a = None | Some a
+        def foo : forall a . Maybe a = None
+      }"
+      Ast.(
+        Module
+          ( "Hello",
+            [
+              Type ("Maybe", [ "a" ], [ ("None", []); ("Some", [ TVar "a" ]) ]);
+              Def
+                ( Some (TForall ([ "a" ], TApp (TCon "Maybe", TVar "a"))),
+                  "foo",
+                  EVar "None" );
+            ] ));
+    test_parser_ast "type definitions with parens"
+      "module Hello = {
+        type List a =
+          | Nil
+          | Cons a (List a)
+      }"
+      Ast.(
+        Module
+          ( "Hello",
+            [
+              Type
+                ( "List",
+                  [ "a" ],
+                  [
+                    ("Nil", []);
+                    ("Cons", [ TVar "a"; TApp (TCon "List", TVar "a") ]);
+                  ] );
+            ] ));
   ]
 
 let suite = "Parser" >::: cst_tests @ ast_tests

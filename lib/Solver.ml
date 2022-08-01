@@ -139,8 +139,8 @@ module Report = struct
         error
           [
             Text
-              ("Cannot solve constraint: " ^ Type.show_mono ty ^ " = "
-             ^ Type.show_mono ty');
+              ("Cannot solve constraint: " ^ Type.pretty_mono ty ^ " = "
+             ^ Type.pretty_mono ty');
           ];
       ]
 
@@ -163,6 +163,10 @@ module Resolve = struct
             | None -> Report.unbound_type name span
             | Some _ -> pure (Type.Con name)))
     | TVar (_, name) -> pure (Type.Var name)
+    | TApp (_, func, arg) ->
+        let* func = ty func in
+        let* arg = ty arg in
+        pure (Type.App (func, arg))
     | TArr (_, from, to_) ->
         let* from = ty from in
         let* to_ = ty to_ in
@@ -199,6 +203,10 @@ module Core = struct
     match ty with
     | Var name' when name = name' -> Report.failed_occurs_check name
     | Int | Bool | Var _ | Con _ -> pure ()
+    | App (func, arg) ->
+        let* _ = occurs_check name func in
+        let* _ = occurs_check name arg in
+        pure ()
     | Arrow (from, to_) ->
         let* _ = occurs_check name from in
         let* _ = occurs_check name to_ in
@@ -210,6 +218,10 @@ module Core = struct
     match ty with
     | Var name when name = old -> new_
     | Int | Bool | Var _ | Con _ -> ty
+    | App (func, arg) ->
+        let func = substitute old new_ func in
+        let arg = substitute old new_ arg in
+        App (func, arg)
     | Arrow (from, to_) ->
         let from = substitute old new_ from in
         let to_ = substitute old new_ to_ in
@@ -234,6 +246,8 @@ module Core = struct
             let cs = substitute_constraints tv ty cs in
             let* subs = solve_constraints cs in
             pure ((tv, ty) :: subs)
+        | App (t1, t2), App (t1', t2') ->
+            solve_constraints ((t1, t1') :: (t2, t2') :: cs)
         | Arrow (t1, t2), Arrow (t1', t2') ->
             solve_constraints ((t1, t1') :: (t2, t2') :: cs)
         | _, _ -> Report.cannot_solve_constraint ty ty')
@@ -246,6 +260,10 @@ module Core = struct
         match ty with
         | Var name' when name = name' -> apply ss' new_
         | Int | Bool | Var _ | Con _ -> apply ss' ty
+        | App (func, arg) ->
+            let func = apply ss func in
+            let arg = apply ss arg in
+            apply ss' (App (func, arg))
         | Arrow (from, to_) ->
             let from = apply ss from in
             let to_ = apply ss to_ in
@@ -262,6 +280,10 @@ module Core = struct
   let rec free_ty_vars : Type.mono -> StrSet.t = function
     | Type.Int | Type.Bool | Type.Con _ -> StrSet.empty
     | Type.Var name -> StrSet.singleton name
+    | App (func, arg) ->
+        let func = free_ty_vars func in
+        let arg = free_ty_vars arg in
+        StrSet.union func arg
     | Type.Arrow (from, to_) ->
         let from = free_ty_vars from in
         let to_ = free_ty_vars to_ in
@@ -354,15 +376,20 @@ module KindEngine = struct
       (fun (con, tys) ->
         let* tys = accumulate_list Resolve.ty tys in
         let con_t = List.fold_right (fun l r -> Type.Arrow (l, r)) tys ty in
-        pure (con, Type.mono con_t))
+        (* TODO: Should this be normalized here? or later? *)
+        let _, scheme = Core.normalize_scheme (Core.generalize con_t) in
+        pure (con, scheme))
       alts
 
   (* infer kinds of types *)
-  let infer_kind ((_, name, alts) : Cst.ty_def) =
-    let kind = Type.KType in
-    let* alts =
-      local (Ctx.insert_ty name kind) (infer_constructor (Type.Con name) alts)
+  let infer_kind ((_, name, vars, alts) : Cst.ty_def) =
+    let kind =
+      List.fold_left (fun kind _ -> Type.KArrow (KType, kind)) Type.KType vars
     in
+    let ty =
+      List.fold_left (fun ty tv -> Type.App (ty, Var tv)) (Type.Con name) vars
+    in
+    let* alts = local (Ctx.insert_ty name kind) (infer_constructor ty alts) in
     pure (name, kind, alts)
 end
 
@@ -560,7 +587,7 @@ let solve_types (ty_defs : Cst.ty_def list) =
   (* TODO: infer kind of each type *)
   let* results =
     accumulate_list
-      (fun ((span, _, _) as ty_def) ->
+      (fun ((span, _, _, _) as ty_def) ->
         let* name, kind, alts = KindEngine.infer_kind ty_def in
         pure ((name, kind, alts), Tast.TyDef { span; name; kind; alts }))
       ty_defs
@@ -586,7 +613,8 @@ let module_ (m : Cst.modu) (ctx : ty_ctx) : (Tast.modu, Error.t list) result =
             match bind with
             | Cst.Def (span, name, scheme, expr) ->
                 ((span, name, scheme, expr) :: defs, tys)
-            | Cst.Type (span, name, alts) -> (defs, (span, name, alts) :: tys))
+            | Cst.Type (span, name, vars, alts) ->
+                (defs, (span, name, vars, alts) :: tys))
           ([], []) bindings
       in
       let* (ctx', types), _c, _s = solve_types tys ctx 0 in

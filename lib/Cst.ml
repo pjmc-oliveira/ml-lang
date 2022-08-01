@@ -1,6 +1,7 @@
 type ty =
   | TCon of Source.Span.t * string
   | TVar of Source.Span.t * string
+  | TApp of Source.Span.t * ty * ty
   | TArr of Source.Span.t * ty * ty
 [@@deriving show]
 
@@ -10,6 +11,7 @@ type scheme = TMono of ty | TForall of Source.Span.t * string list * ty
 let map_ty f = function
   | TCon (x, name) -> TCon (f x, name)
   | TVar (x, name) -> TVar (f x, name)
+  | TApp (x, func, arg) -> TApp (f x, func, arg)
   | TArr (x, from, to_) -> TArr (f x, from, to_)
 
 let map_scheme f = function
@@ -32,7 +34,7 @@ type expr =
 
 type alt = string * ty list [@@deriving show]
 type tm_def = Source.Span.t * string * scheme option * expr [@@deriving show]
-type ty_def = Source.Span.t * string * alt list [@@deriving show]
+type ty_def = Source.Span.t * string * string list * alt list [@@deriving show]
 type bind = Def of tm_def | Type of ty_def [@@deriving show]
 type modu = Module of Source.Span.t * string * bind list [@@deriving show]
 
@@ -53,6 +55,10 @@ let rec ty_to_ast (t : ty) : Ast.ty =
   match t with
   | TCon (_, name) -> TCon name
   | TVar (_, name) -> TVar name
+  | TApp (_, func, arg) ->
+      let func = ty_to_ast func in
+      let arg = ty_to_ast arg in
+      TApp (func, arg)
   | TArr (_, from, to_) ->
       let from = ty_to_ast from in
       let to_ = ty_to_ast to_ in
@@ -110,7 +116,7 @@ let bind_to_ast (b : bind) : Ast.bind =
   match b with
   | Def (_, name, scheme, expr) ->
       Def (Option.map scheme_to_ast scheme, name, expr_to_ast expr)
-  | Type (_, name, alts) -> Type (name, List.map alt_to_ast alts)
+  | Type (_, name, vars, alts) -> Type (name, vars, List.map alt_to_ast alts)
 
 let to_ast (m : modu) : Ast.modu =
   match m with

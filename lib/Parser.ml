@@ -206,7 +206,7 @@ let toplevel =
 
 let rec type_ () : Cst.ty t =
   with_span
-    (let* from = type_atom () in
+    (let* from = type_application () in
      one_of
        (error [ Text "Expected type" ])
        [
@@ -214,6 +214,20 @@ let rec type_ () : Cst.ty t =
           pure (fun span -> Cst.TArr (span, from, to_)));
          pure (fun _ -> from);
        ])
+
+and type_application () =
+  with_span
+    (let* func = type_atom () in
+     let* args = many (type_atom ()) in
+     let ty =
+       List.fold_left
+         (fun func arg span ->
+           let func = func span in
+           Cst.TApp (span, func, arg))
+         (fun _ -> func)
+         args
+     in
+     pure ty)
 
 and type_atom () =
   with_span
@@ -339,7 +353,8 @@ let def : (Source.span -> Cst.bind) t =
 let ty_alternatives =
   let single_alt =
     let* head = upper_identifier in
-    let* tys = many (type_ ()) in
+    (* Only want type atoms, complex types should be wrapped in parens *)
+    let* tys = many (type_atom ()) in
     pure (head, tys)
   in
   let* _ = optional (accept Pipe) in
@@ -350,9 +365,10 @@ let ty_alternatives =
 let ty_def : (Source.span -> Cst.bind) t =
   let* _ = accept Type in
   let* name = upper_identifier in
+  let* vars = many lower_identifier in
   let* _ = expect Equal in
   let* alts = ty_alternatives in
-  pure (fun span -> Cst.Type (span, name, alts))
+  pure (fun span -> Cst.Type (span, name, vars, alts))
 
 let binding : Cst.bind t =
   let* b, sp =

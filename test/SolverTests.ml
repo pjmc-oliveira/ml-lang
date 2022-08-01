@@ -316,7 +316,87 @@ module Mono (S : Solver.S) = struct
                       ]));
            (* TODO: mutually recursive types *)
            (* TODO: polymorphic types *)
+           test_solver "polymorphic type definition"
+             "module Hello = {
+                 type Maybe a = None | Some a
+                 def an_int = Some 1
+               }"
+             (Ctx.of_list
+                ~types:[ ("Maybe", Type.(KArrow (KType, KType))) ]
+                ~terms:
+                  [
+                    ("an_int", Type.(mono (App (Con "Maybe", Int))));
+                    ("None", Type.(Poly ([ "t0" ], App (Con "Maybe", Var "t0"))));
+                    ( "Some",
+                      Type.(
+                        Poly
+                          ( [ "t0" ],
+                            Arrow (Var "t0", App (Con "Maybe", Var "t0")) )) );
+                  ]);
+           test_solver "polymorphic type use"
+             "module Hello = {
+                type List a =
+                  | Nil
+                  | Cons a (List a)
+
+                def fold_right = \\f \\base \\list
+                  match list with
+                    | Nil -> base
+                    | Cons x xs -> f x (fold_right f base xs)
+                  end
+               }"
+             (Ctx.of_list
+                ~types:[ ("List", Type.(KArrow (KType, KType))) ]
+                ~terms:
+                  [
+                    ( "fold_right",
+                      Type.(
+                        let f = Arrow (Var "t0", Arrow (Var "t1", Var "t1")) in
+                        let base = Var "t1" in
+                        let list = App (Con "List", Var "t0") in
+                        Poly
+                          ( [ "t0"; "t1" ],
+                            Arrow (f, Arrow (base, Arrow (list, Var "t1"))) ))
+                    );
+                    ("Nil", Type.(Poly ([ "t0" ], App (Con "List", Var "t0"))));
+                    ( "Cons",
+                      Type.(
+                        Poly
+                          ( [ "t0" ],
+                            Arrow
+                              ( Var "t0",
+                                Arrow
+                                  ( App (Con "List", Var "t0"),
+                                    App (Con "List", Var "t0") ) ) )) );
+                  ]);
+           test_solver "multi-parameter polymorphic type definition"
+             "module Hello = {
+                 type Either a b = Left a | Right b
+               }"
+             (Ctx.of_list
+                ~types:
+                  [ ("Either", Type.(KArrow (KType, KArrow (KType, KType)))) ]
+                ~terms:
+                  [
+                    ( "Left",
+                      Type.(
+                        Poly
+                          ( [ "t0"; "t1" ],
+                            Arrow
+                              ( Var "t0",
+                                App (App (Con "Either", Var "t0"), Var "t1") )
+                          )) );
+                    ( "Right",
+                      Type.(
+                        Poly
+                          ( [ "t0"; "t1" ],
+                            Arrow
+                              ( Var "t1",
+                                App (App (Con "Either", Var "t0"), Var "t1") )
+                          )) );
+                  ]);
            (* TODO: exhaustivity check for match-with *)
+           (* TODO: check kinds on type definitions *)
            (* Failures *)
            test_failure "let expression out-of-scope"
              "module Hello = { def foo = let x = 1 in x def main = x }"
@@ -401,7 +481,6 @@ module Poly (S : Solver.S) = struct
     "Poly Solver"
     >::: [
            (* Success *)
-           (* TODO: polymorphic functions *)
            test_solver "infer top-level polymorphic function"
              "module Hello = {
               def identity = \\x x

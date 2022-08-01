@@ -244,9 +244,9 @@ let suite =
          test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
            "run a simple program"
            "module Hello = {
-               type List =
+               type List a =
                  | Nil
-                 | Cons Int List
+                 | Cons a (List a)
 
                def fold_right = \\f \\base \\list
                  match list with
