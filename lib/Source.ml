@@ -47,6 +47,16 @@ let next src =
     let position = Pos.step ch src.position in
     Some (ch, { src with position })
 
+let drop_prefix prefix src : t option =
+  let index = src.position.index in
+  let length = String.length src.text - index in
+  let text = String.sub src.text index length in
+  if String.starts_with ~prefix text then
+    let position = Pos.step_many prefix src.position in
+    Some { src with position }
+  else
+    None
+
 let drop_while predicate src : t =
   let start = src.position.index in
   let size = String.length src.text in

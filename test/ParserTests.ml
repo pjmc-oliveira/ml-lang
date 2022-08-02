@@ -298,6 +298,26 @@ let ast_tests =
                     ("Cons", [ TVar "a"; TApp (TCon "List", TVar "a") ]);
                   ] );
             ] ));
+    test_parser_ast "line comments"
+      "-- start comment
+      module Hello = {
+        -- a comment
+        type List a =
+          | Nil             -- another comment
+          | Cons a (List a) -- third comment
+      }-- end comment"
+      Ast.(
+        Module
+          ( "Hello",
+            [
+              Type
+                ( "List",
+                  [ "a" ],
+                  [
+                    ("Nil", []);
+                    ("Cons", [ TVar "a"; TApp (TCon "List", TVar "a") ]);
+                  ] );
+            ] ));
   ]
 
 let suite = "Parser" >::: cst_tests @ ast_tests

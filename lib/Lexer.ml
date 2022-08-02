@@ -24,6 +24,7 @@ let keywords =
   ]
   |> List.to_seq |> StrMap.of_seq
 
+(** Lexes a token *)
 let token src : (Token.t * Source.span * Source.t, Error.t) result =
   match Source.next src with
   | None -> fail [ Text "Unexpected EOF" ]
@@ -84,8 +85,23 @@ let token src : (Token.t * Source.span * Source.t, Error.t) result =
           let location = Source.between src src' in
           fail [ Text "Unexpected character: "; Code (str, location) ])
 
+(** Comsume whitespace *)
 let space src : Source.t = Source.drop_while Char.is_space src
 
+(** Consume comments *)
+let comment src =
+  match Source.drop_prefix "--" src with
+  | None -> None
+  | Some src' -> Some (Source.drop_while (fun c -> not (c = '\n')) src')
+
+(** Skips whitespace and comments *)
+let rec skip src =
+  let src' = space src in
+  match comment src' with
+  | None -> src'
+  | Some src'' -> skip src''
+
+(** Lexes all tokens *)
 let tokens src : ((Token.t * Source.span) list, Error.t list) result =
   let rec loop tks errs s =
     if Source.is_done s then
@@ -95,7 +111,7 @@ let tokens src : ((Token.t * Source.span) list, Error.t list) result =
         Error (List.rev errs)
     else
       match token s with
-      | Ok (tk, loc, s') -> loop ((tk, loc) :: tks) errs (space s')
+      | Ok (tk, loc, s') -> loop ((tk, loc) :: tks) errs (skip s')
       | Error err -> loop tks (err :: errs) (Source.drop s)
   in
-  loop [] [] (space src)
+  loop [] [] (skip src)
