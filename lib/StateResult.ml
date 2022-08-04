@@ -51,6 +51,21 @@ let traverse_list (f : 'a -> ('b, 's, 'e) t) (xs : 'a list) :
           | Ok (ys, s'') -> Ok (y :: ys, s'')))
     xs (pure [])
 
+let accumulate_list (f : 'a -> ('b, 's, 'e) t) (xs : 'a list) :
+    ('b list, 's, 'e) t =
+  List.fold_right
+    (fun x st s ->
+      match f x s with
+      | Error e1 -> (
+          match st s with
+          | Error e2 -> Error (e1 @ e2)
+          | Ok _ -> Error e1)
+      | Ok (y, s') -> (
+          match st s' with
+          | Error e -> Error e
+          | Ok (ys, s'') -> Ok (y :: ys, s'')))
+    xs (pure [])
+
 module Syntax = struct
   let ( let* ) = bind
   let ( and* ) = prod

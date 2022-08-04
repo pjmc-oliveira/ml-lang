@@ -23,7 +23,7 @@ module Combinator = struct
     | _, Error errs -> Error errs
     | _, Ok (x, ([], _)) -> Ok x
     | _, Ok (x, _) ->
-        print_string "Warning: Unnconsumed input\n";
+        print_string "Warning: Unconsumed input\n";
         Ok x
 
   let map f (p : 'a t) : 'b t =
@@ -165,8 +165,9 @@ module Combinator = struct
       let* pos = last_position in
       fail_lines ~location:pos
         [
+          Text ("Unexpected token: " ^ Token.to_string tk);
+          Quote pos;
           Text ("Expected: " ^ Token.to_string expected);
-          Text ("But got: " ^ Token.to_string tk);
         ]
 
   let accept expected = try_ (expect expected)
@@ -179,7 +180,8 @@ module Combinator = struct
         let* pos = last_position in
         fail_lines ~location:pos
           [
-            Text "Expected lower identifier";
+            Text "Expected lowercase identifier";
+            Quote pos;
             Text ("But got: " ^ Token.to_string tk);
           ]
 
@@ -191,7 +193,8 @@ module Combinator = struct
         let* pos = last_position in
         fail_lines ~location:pos
           [
-            Text "Expected upper identifier";
+            Text "Expected uppercase identifier";
+            Quote pos;
             Text ("But got: " ^ Token.to_string tk);
           ]
 end
@@ -201,7 +204,7 @@ open Combinator.Syntax
 open Combinator.Infix
 
 let toplevel =
-  let* () = drop_until (fun t -> t = Def) in
+  let* () = drop_until (fun t -> t = Def || t = Type) in
   pure ()
 
 let rec type_ () : Cst.ty t =
@@ -290,18 +293,21 @@ and match_with () =
     (let* _ = accept Match in
      let* expr = expression () in
      let* _ = expect With in
-     let* alts = alternatives () in
+     let* alts = some (alternative ()) in
      let* _ = expect End in
      pure (fun span -> Cst.EMatch (span, expr, alts)))
 
-and alternatives () =
-  some
-    (let* _ = accept Pipe in
-     let* head = upper_identifier in
-     let* vars = many lower_identifier in
-     let* _ = expect Arrow in
-     let* body = expression () in
-     pure (Cst.PCon (head, vars), body))
+and alternative () : (Cst.pat Cst.spanned * Cst.expr) t =
+  let* _ = accept Pipe in
+  let* pat =
+    span_of
+      (let* head = span_of upper_identifier in
+       let* vars = many (span_of lower_identifier) in
+       pure (Cst.PCon (head, vars)))
+  in
+  let* _ = expect Arrow in
+  let* body = expression () in
+  pure (pat, body)
 
 and annotation () =
   with_span
@@ -382,6 +388,7 @@ let module_ : Cst.modu t =
     let* name = upper_identifier in
     let* () = expect Equal in
     let* () = expect LeftBrace in
+    (* TODO: accumulate is not working properly *)
     let* bindings = accumulate binding ~recover:toplevel in
     let* () = expect RightBrace in
     let* () = eof in

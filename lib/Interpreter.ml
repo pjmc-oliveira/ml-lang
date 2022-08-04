@@ -1,5 +1,5 @@
 open Extensions
-module TmCtx = Ctx.Make (String)
+module TmCtx = Ctx.Make (Stdlib.String)
 
 type tm_ctx = Value.t TmCtx.t
 

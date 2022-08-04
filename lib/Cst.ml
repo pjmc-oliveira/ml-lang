@@ -1,3 +1,5 @@
+type 'a spanned = 'a * Source.Span.t [@@deriving show]
+
 type ty =
   | TCon of Source.Span.t * string
   | TVar of Source.Span.t * string
@@ -19,7 +21,7 @@ let map_scheme f = function
   | TForall (x, tvars, ty) -> TForall (f x, tvars, ty)
 
 type lit = Int of int | Bool of bool [@@deriving show]
-type pat = PCon of string * string list [@@deriving show]
+type pat = PCon of string spanned * string spanned list [@@deriving show]
 
 type expr =
   | ELit of Source.Span.t * lit
@@ -29,7 +31,7 @@ type expr =
   | ELam of Source.Span.t * string * ty option * expr
   | EApp of Source.Span.t * expr * expr
   | EAnn of Source.Span.t * expr * ty
-  | EMatch of Source.Span.t * expr * (pat * expr) list
+  | EMatch of Source.Span.t * expr * (pat spanned * expr) list
 [@@deriving show]
 
 type alt = string * ty list [@@deriving show]
@@ -106,9 +108,10 @@ let rec expr_to_ast (e : expr) : Ast.expr =
       let expr = expr_to_ast expr in
       EMatch (expr, List.map pat_to_ast alts)
 
-and pat_to_ast (pat, expr) =
+and pat_to_ast ((pat, _sp), expr) =
   match pat with
-  | PCon (con, vars) -> (Ast.PCon (con, vars), expr_to_ast expr)
+  | PCon ((con, _sp), vars) ->
+      (Ast.PCon (con, List.map (fun (var, _sp) -> var) vars), expr_to_ast expr)
 
 let alt_to_ast (head, tys) = (head, List.map ty_to_ast tys)
 
@@ -121,3 +124,19 @@ let bind_to_ast (b : bind) : Ast.bind =
 let to_ast (m : modu) : Ast.modu =
   match m with
   | Module (_, name, bindings) -> Module (name, List.map bind_to_ast bindings)
+
+let span_of_expr = function
+  | ELit (sp, _) -> sp
+  | EVar (sp, _) -> sp
+  | ELet (sp, _, _, _, _) -> sp
+  | EIf (sp, _, _, _) -> sp
+  | ELam (sp, _, _, _) -> sp
+  | EApp (sp, _, _) -> sp
+  | EAnn (sp, _, _) -> sp
+  | EMatch (sp, _, _) -> sp
+
+let span_of_ty = function
+  | TCon (sp, _) -> sp
+  | TVar (sp, _) -> sp
+  | TApp (sp, _, _) -> sp
+  | TArr (sp, _, _) -> sp

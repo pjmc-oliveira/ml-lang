@@ -9,25 +9,26 @@ let parse_module str =
   let* m = Parser.(parse module_ tks) in
   Ok m
 
-let string_of_cst_result r =
+let string_of_cst_result src r =
   match r with
   | Ok m -> "Ok " ^ Cst.show_modu m
-  | Error e -> "Error " ^ String.concat "\n" (List.map Error.to_string e)
+  | Error e -> "Error " ^ String.concat "\n" (List.map (Error.to_string src) e)
 
 let test_parser_cst label str cst =
   label >:: fun _ ->
-  assert_equal (Ok cst) (parse_module str) ~printer:string_of_cst_result
+  assert_equal (Ok cst) (parse_module str)
+    ~printer:(string_of_cst_result (Source.of_string str))
 
-let string_of_ast_result r =
+let string_of_ast_result src r =
   match r with
   | Ok m -> "Ok " ^ Ast.show_modu m
-  | Error e -> "Error " ^ String.concat "\n" (List.map Error.to_string e)
+  | Error e -> "Error " ^ String.concat "\n" (List.map (Error.to_string src) e)
 
 let test_parser_ast label str ast =
   label >:: fun _ ->
   assert_equal (Ok ast)
     (Result.map Cst.to_ast (parse_module str))
-    ~printer:string_of_ast_result
+    ~printer:(string_of_ast_result (Source.of_string str))
 
 let cst_tests =
   let open Cst in

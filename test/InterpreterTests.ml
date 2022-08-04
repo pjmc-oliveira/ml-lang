@@ -15,10 +15,11 @@ let interpret_module ?(entrypoint = "main") ?(tm_ctx = TmCtx.empty)
   let* value = Interpreter.run ~entrypoint ~context:tm_ctx m in
   Ok value
 
-let string_of_result r =
+let string_of_result src r =
   match r with
   | Ok value -> "Ok " ^ Value.show value
-  | Error e -> "Error [" ^ String.concat "\n" (List.map Error.to_string e) ^ "]"
+  | Error e ->
+      "Error [" ^ String.concat "\n" (List.map (Error.to_string src) e) ^ "]"
 
 let error_to_lines (e : Error.t) : Error.Line.t list = e.lines
 let errors_to_lines es = List.(map error_to_lines es)
@@ -34,7 +35,9 @@ let string_of_result_lines (r : (Value.t, Error.Line.t list list) result) =
 let test_interpreter label str ?(entrypoint = "main") ?(tm_ctx = TmCtx.empty)
     ?(ty_ctx = TyCtx.empty) expected =
   label >:: fun _ ->
-  assert_equal ~printer:string_of_result (Ok expected)
+  assert_equal
+    ~printer:(string_of_result (Source.of_string str))
+    (Ok expected)
     (interpret_module ~entrypoint ~tm_ctx ~ty_ctx str)
 
 let test_failure label str ?(entrypoint = "main") ?(tm_ctx = TmCtx.empty)
@@ -344,5 +347,10 @@ let suite =
          (* Failure *)
          test_failure "local scope"
            "module Hello = { def foo = let x = 1 in x def main = x }"
-           [ [ Text "Unbound variable: x" ] ];
+           [
+             [
+               Text "Unbound variable: x";
+               Quote { index = 53; line = 1; column = 54; length = 1 };
+             ];
+           ];
        ]

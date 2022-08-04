@@ -16,8 +16,8 @@ let read_lines path : string =
   let lines = loop [] in
   String.concat "\n" lines
 
-let string_of_errors errs =
-  let lines = List.map Error.to_string errs in
+let string_of_errors src errs =
+  let lines = List.map (Error.to_string src) errs in
   let lines = String.concat "\n\n" lines in
   lines
 
@@ -42,4 +42,10 @@ let report res =
   | Ok value -> "Success:\n" ^ Value.show value
 
 let source = read_lines [ "examples"; "hello.luz" ]
-let () = print_string (report (Result.map_error string_of_errors (run source)))
+
+let () =
+  print_endline
+    (report
+       (Result.map_error
+          (string_of_errors (Source.of_string source))
+          (run source)))

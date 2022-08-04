@@ -1,7 +1,6 @@
 open Extensions
 
-let fail ?location lines : ('a, Error.t) result =
-  Error { kind = Lexer; lines; location }
+let fail ?location lines : Error.t = { kind = Lexer; lines; location }
 
 module StrMap = Map.Make (String)
 
@@ -22,12 +21,17 @@ let keywords =
     ("True", Bool true);
     ("False", Bool false);
   ]
-  |> List.to_seq |> StrMap.of_seq
+  |> List.to_seq
+  |> StrMap.of_seq
+
+let unexpected_char char loc =
+  fail
+    [ Text ("Unexpected character: '" ^ String.of_char char ^ "'"); Quote loc ]
 
 (** Lexes a token *)
-let token src : (Token.t * Source.span * Source.t, Error.t) result =
+let token src : (Token.t * Source.span * Source.t, Error.t * Source.t) result =
   match Source.next src with
-  | None -> fail [ Text "Unexpected EOF" ]
+  | None -> Error (fail [ Text "Unexpected EOF" ], src)
   | Some (c, src') -> (
       let span = Source.between src src' in
       match c with
@@ -47,9 +51,8 @@ let token src : (Token.t * Source.span * Source.t, Error.t) result =
               let span = Source.between src src'' in
               Ok (Arrow, span, src'')
           | _ ->
-              let str = String.make 1 c in
               let location = Source.between src src' in
-              fail [ Text "Unexpected character: "; Code (str, location) ])
+              Error (unexpected_char c location, src'))
       | _ when Char.is_alpha_upper c -> (
           let name, src'' =
             Source.take_while (fun c -> Char.is_alphanum c || c = '_') src
@@ -70,20 +73,21 @@ let token src : (Token.t * Source.span * Source.t, Error.t) result =
           let digits, src'' = Source.take_while Char.is_alphanum src in
           if String.exists Char.is_alpha digits then
             let location = Source.between src src'' in
-            fail
-              [
-                Text "Invalid number:";
-                Code (digits, location);
-                Text "Numbers cannot contain letters";
-              ]
+            Error
+              ( fail
+                  [
+                    Text "Invalid number:";
+                    Quote location;
+                    Text "Numbers cannot contain letters";
+                  ],
+                src'' )
           else
             let number = int_of_string digits in
             let span = Source.between src src'' in
             Ok (Int number, span, src'')
       | _ ->
-          let str = String.make 1 c in
           let location = Source.between src src' in
-          fail [ Text "Unexpected character: "; Code (str, location) ])
+          Error (unexpected_char c location, src'))
 
 (** Comsume whitespace *)
 let space src : Source.t = Source.drop_while Char.is_space src
@@ -110,8 +114,8 @@ let tokens src : ((Token.t * Source.span) list, Error.t list) result =
       else
         Error (List.rev errs)
     else
-      match token s with
+      match token (skip s) with
       | Ok (tk, loc, s') -> loop ((tk, loc) :: tks) errs (skip s')
-      | Error err -> loop tks (err :: errs) (Source.drop s)
+      | Error (err, s') -> loop tks (err :: errs) (Source.drop s')
   in
   loop [] [] (skip src)

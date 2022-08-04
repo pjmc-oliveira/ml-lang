@@ -20,13 +20,20 @@ let string_of_ctx ctx =
            "\t\t( \"" ^ name ^ "\", " ^ Type.show_kind kind ^ " )")
          (Ctx.to_types_list ctx))
   in
-  "Ok {\n" ^ "\ttypes = [\n" ^ types ^ "\n\t]\n" ^ "\tterms = [\n" ^ terms
-  ^ "\n\t]\n" ^ "\n}"
+  "Ok {\n"
+  ^ "\ttypes = [\n"
+  ^ types
+  ^ "\n\t]\n"
+  ^ "\tterms = [\n"
+  ^ terms
+  ^ "\n\t]\n"
+  ^ "\n}"
 
-let string_of_result r =
+let string_of_result src r =
   match r with
   | Ok ctx -> string_of_ctx ctx
-  | Error e -> "Error [" ^ String.concat "\n" (List.map Error.to_string e) ^ "]"
+  | Error e ->
+      "Error [" ^ String.concat "\n" (List.map (Error.to_string src) e) ^ "]"
 
 let error_to_lines (e : Error.t) : Error.Line.t list = e.lines
 let errors_to_lines es = List.(map error_to_lines es)
@@ -63,7 +70,9 @@ module Tester (S : Solver.S) = struct
       (expected_ctx : Ctx.t) =
     label >:: fun _ ->
     skip_if skip "Skipped test";
-    assert_equal ~printer:string_of_result ~cmp:ty_ctx_equal (Ok expected_ctx)
+    assert_equal
+      ~printer:(string_of_result (Source.of_string str))
+      ~cmp:ty_ctx_equal (Ok expected_ctx)
       (solve_module str initial_ctx)
 
   let test_failure label str ?(skip = false) ?(initial_ctx = Ctx.empty)
@@ -71,11 +80,10 @@ module Tester (S : Solver.S) = struct
     label >:: fun _ ->
     skip_if skip "Skipped test";
     let result = solve_module str initial_ctx in
-    assert_equal
-      ~printer:string_of_result_lines
-        (* ~cmp:ty_ctx_equal *)
-        (* TODO: Revert this to strong equality *)
-      ~cmp:ty_ctx_equal_weak (Error expected_lines)
+    assert_equal ~printer:string_of_result_lines ~cmp:ty_ctx_equal
+      (* TODO: Revert this to strong equality *)
+      (* ~cmp:ty_ctx_equal_weak *)
+      (Error expected_lines)
       (Result.map_error errors_to_lines result)
 end
 
@@ -122,7 +130,7 @@ module Mono (S : Solver.S) = struct
            test_solver "top level recursive value with annotation"
              "module Hello = { def hello : Int  = hello }"
              (Ctx.of_terms_list [ ("hello", Type.(mono Int)) ]);
-           test_solver "annotatated expression"
+           test_solver "annotated expression"
              "module Hello = { def hello = 1 : Int }"
              (Ctx.of_terms_list [ ("hello", Type.(mono Int)) ]);
            test_solver "function application"
@@ -240,7 +248,7 @@ module Mono (S : Solver.S) = struct
                       ("is_even", Type.(mono (Arrow (Int, Bool))));
                       ("is_odd", Type.(mono (Arrow (Int, Bool))));
                     ]));
-           test_solver "mutually recursive definitionns"
+           test_solver "mutually recursive definitions"
              "module Hello = {
                 def ping = ping
                 def pong = pong
@@ -394,34 +402,55 @@ module Mono (S : Solver.S) = struct
                                 App (App (Con "Either", Var "t0"), Var "t1") )
                           )) );
                   ]);
-           (* TODO: exhaustivity check for match-with *)
            (* Failures *)
            test_failure "let expression out-of-scope"
              "module Hello = { def foo = let x = 1 in x def main = x }"
-             [ [ Text "Unbound variable: x" ] ];
+             [
+               [
+                 Text "Unbound variable: x";
+                 Quote { index = 53; line = 1; column = 54; length = 1 };
+               ];
+             ];
            test_failure "unbound constructor" "module Hello = { def foo = Foo }"
-             [ [ Text "Unbound variable: Foo" ] ];
+             [
+               [
+                 Text "Unbound variable: Foo";
+                 Quote { index = 27; line = 1; column = 28; length = 3 };
+               ];
+             ];
            test_failure "if expression condition-not-bool"
              "module Hello = { def main = if 1 then 1 else 2 }"
              [
                [
-                 Text
-                   ("Expected if-condition to be type: " ^ Type.show_mono Bool);
-                 Text ("But got type: " ^ Type.show_mono Int);
+                 Text "Cannot solve constraint: Bool = Int";
+                 Text "Got Int from:";
+                 Quote { index = 31; line = 1; column = 32; length = 1 };
+                 Text "But if-condition must be Bool";
                ];
              ];
            test_failure "if expression branch-mismatch"
              "module Hello = { def main = if True then 1 else False }"
              [
                [
+                 Text "Cannot solve constraint: Int = Bool";
+                 Text "Got Int from:";
+                 Quote { index = 41; line = 1; column = 42; length = 1 };
+                 Text "And Bool from:";
+                 Quote { index = 48; line = 1; column = 49; length = 5 };
                  Text "If branches must have the same type";
-                 Text ("then-branch has type: " ^ Type.show_mono Int);
-                 Text ("but else-branch has type: " ^ Type.show_mono Bool);
                ];
              ];
            test_failure "cannot apply to non-function"
              "module Hello = { def main = 1 1 }"
-             [ [ Text "Cannot a apply to non-function values" ] ];
+             [
+               [
+                 Text "Cannot solve constraint: Int = Int -> t1";
+                 Text "Got Int from:";
+                 Quote { index = 28; line = 1; column = 29; length = 1 };
+                 Text "And Int from:";
+                 Quote { index = 30; line = 1; column = 31; length = 1 };
+               ];
+             ];
            test_failure "wrong argument type"
              "module Hello = {
                 def identity = \\x : Int. x
@@ -429,18 +458,22 @@ module Mono (S : Solver.S) = struct
               }"
              [
                [
-                 Text "Wrong argument type";
-                 Text ("Expected: " ^ Type.show_mono Int);
-                 Text ("But got: " ^ Type.show_mono Bool);
+                 Text "Cannot solve constraint: Int = Bool";
+                 Text "Got Int -> Int from:";
+                 Quote { index = 87; line = 3; column = 28; length = 8 };
+                 Text "And Bool from:";
+                 Quote { index = 96; line = 3; column = 37; length = 4 };
                ];
              ];
-           test_failure "wrong annotatated expression"
+           test_failure "wrong annotated expression"
              "module Hello = { def hello = 1 : Bool }"
              [
                [
-                 Text "Type mismatch";
-                 Text ("Expected: " ^ Type.show_mono Bool);
-                 Text ("But got: " ^ Type.show_mono Int);
+                 Text "Cannot solve constraint: Int = Bool";
+                 Text "Got Int from:";
+                 Quote { index = 29; line = 1; column = 30; length = 1 };
+                 Text "And Bool from:";
+                 Quote { index = 33; line = 1; column = 34; length = 4 };
                ];
              ];
            test_failure "Wrong constructor type"
@@ -448,7 +481,15 @@ module Mono (S : Solver.S) = struct
                 type Maybe = None | Some Int
                 def foo = Some True
               }"
-             [ (* TODO: Add error message *) ];
+             [
+               [
+                 Text "Cannot solve constraint: Int = Bool";
+                 Text "Got Int -> Maybe from:";
+                 Quote { index = 88; line = 3; column = 27; length = 4 };
+                 Text "And Bool from:";
+                 Quote { index = 93; line = 3; column = 32; length = 4 };
+               ];
+             ];
            test_failure "Match pattern with too many variables"
              "module Hello = {
                 type Nat = Zero | Succ Nat
@@ -458,7 +499,14 @@ module Mono (S : Solver.S) = struct
                     | Succ x y -> 1
                   end
               }"
-             [ (* TODO: Add error message *) ];
+             [
+               [
+                 Text "Arity mismatch for constructor: Succ";
+                 Quote { index = 181; line = 6; column = 23; length = 8 };
+                 Text "Expected 1 variable(s)";
+                 Text "But got 2 variable(s)";
+               ];
+             ];
            test_failure "Match pattern with too few variables"
              "module Hello = {
                 type Nat = Zero | Succ Nat
@@ -468,21 +516,42 @@ module Mono (S : Solver.S) = struct
                     | Succ -> 1
                   end
               }"
-             [ (* TODO: Add error message *) ];
+             [
+               [
+                 Text "Arity mismatch for constructor: Succ";
+                 Quote { index = 181; line = 6; column = 23; length = 4 };
+                 Text "Expected 1 variable(s)";
+                 Text "But got 0 variable(s)";
+               ];
+             ];
            test_failure "Type definition with wrong kind"
              "module Hello = {
                 type List a =
                   | Nil
                   | Cons a List
               }"
-             [ (* TODO: Add error message *) ];
+             [
+               [
+                 Text "Kind mismatch";
+                 Text "Expected: Type";
+                 Text "But got: Type -> Type";
+               ];
+             ];
+           (* TODO: exhaustivity check for match-with *)
+           (* TODO: check overlapping patterns *)
            test_failure "Type definition with wrong kind"
              "module Hello = {
                 type List a =
                   | Nil
                   | Cons a (Int a)
               }"
-             [ (* TODO: Add error message *) ];
+             [
+               [
+                 Text "Kind mismatch";
+                 Text "Expected kind: Type -> Type";
+                 Text "But got: Type";
+               ];
+             ];
          ]
 end
 
@@ -518,7 +587,7 @@ module Poly (S : Solver.S) = struct
                   ("main", Type.(mono Int));
                 ]);
            (* TODO: fresh variable should not mix with explicitly annotated type variables *)
-           (* TODO: Inferred type should match top-level annotationn if provided *)
+           (* TODO: Inferred type should match top-level annotation if provided *)
            test_solver ~skip:true "apply annotated polymorphic function"
              "module Hello = {
               def identity : forall a. a -> a = \\x x

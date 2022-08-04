@@ -66,3 +66,12 @@ let rec map_type (f : Type.mono -> Type.mono) : expr -> expr = function
           span,
           map_type f expr,
           List.map (fun (pat, case) -> (pat, map_type f case)) alts )
+
+let get_span = function
+  | ELit (_, sp, _) -> sp
+  | EVar (_, sp, _) -> sp
+  | ELet (_, sp, _, _, _) -> sp
+  | EIf (_, sp, _, _, _) -> sp
+  | ELam (_, _, sp, _, _) -> sp
+  | EApp (_, sp, _, _) -> sp
+  | EMatch (_, sp, _, _) -> sp

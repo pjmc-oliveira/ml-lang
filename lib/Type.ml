@@ -22,11 +22,11 @@ let rec pretty_mono = function
   | Bool -> "Bool"
   | Con name -> name
   | Var name -> name
-  | App ((App _ as func), arg) ->
-      "( " ^ pretty_mono func ^ " ) " ^ pretty_mono arg
+  | App (func, (App _ as arg)) ->
+      pretty_mono func ^ " (" ^ pretty_mono arg ^ ")"
   | App (func, arg) -> pretty_mono func ^ " " ^ pretty_mono arg
   | Arrow ((Arrow _ as inp), out) ->
-      "( " ^ pretty_mono inp ^ " ) -> " ^ pretty_mono out
+      "(" ^ pretty_mono inp ^ ") -> " ^ pretty_mono out
   | Arrow (inp, out) -> pretty_mono inp ^ " -> " ^ pretty_mono out
 
 let get_mono_type = function

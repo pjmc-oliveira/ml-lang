@@ -39,7 +39,18 @@ module Ctx = struct
 end
 
 type ty_ctx = Ctx.t
-type constraints = (Type.mono * Type.mono) list
+
+type constraint_ctx =
+  (* Mismatched types *)
+  | Mismatch of {
+      left : Type.mono * Source.span;
+      right : Type.mono * Source.span;
+      message : string;
+    }
+  (* Unexpected type *)
+  | Unexpected of { got : Type.mono * Source.span; message : string }
+
+type constraints = (Type.mono * Type.mono * constraint_ctx) list
 type subst = (string * Type.mono) list
 
 module type S = sig
@@ -114,10 +125,10 @@ module Report = struct
     { kind = Error.Kind.Solver; location = span; lines }
 
   let unbound_var name span =
-    fail [ error ~span [ Text ("Unbound variable: " ^ name) ] ]
+    fail [ error ~span [ Text ("Unbound variable: " ^ name); Quote span ] ]
 
   let unbound_constructor name span =
-    fail [ error ~span [ Text ("Unbound constructor: " ^ name) ] ]
+    fail [ error ~span [ Text ("Unbound constructor: " ^ name); Quote span ] ]
 
   let constructor_arity_mismatch span name expected actual =
     fail
@@ -125,23 +136,45 @@ module Report = struct
         error ~span
           [
             Text ("Arity mismatch for constructor: " ^ name);
+            Quote span;
             Text ("Expected " ^ string_of_int expected ^ " variable(s)");
             Text ("But got " ^ string_of_int actual ^ " variable(s)");
           ];
       ]
 
   let unbound_type name span =
-    fail [ error ~span [ Text ("Unbound type: " ^ name) ] ]
+    fail [ error ~span [ Text ("Unbound type: " ^ name); Quote span ] ]
 
-  let cannot_solve_constraint ty ty' =
+  let cannot_solve_constraint ty ty' constraint_ctx =
+    let detail =
+      match constraint_ctx with
+      | Mismatch { left = ty, sp; right = ty', sp'; message } ->
+          [
+            Error.Line.Text ("Got " ^ Type.pretty_mono ty ^ " from:");
+            Quote sp;
+            Text ("And " ^ Type.pretty_mono ty' ^ " from:");
+            Quote sp';
+          ]
+          @ if message = "" then [] else [ Text message ]
+      | Unexpected { got = ty, sp; message } ->
+          [
+            Text ("Got " ^ Type.pretty_mono ty ^ " from:");
+            Quote sp;
+            Text message;
+          ]
+    in
+    (* TODO: Should substitute constraints *)
     fail
       [
         error
-          [
-            Text
-              ("Cannot solve constraint: " ^ Type.pretty_mono ty ^ " = "
-             ^ Type.pretty_mono ty');
-          ];
+          ([
+             Error.Line.Text
+               ("Cannot solve constraint: "
+               ^ Type.pretty_mono ty
+               ^ " = "
+               ^ Type.pretty_mono ty');
+           ]
+          @ detail);
       ]
 
   let failed_occurs_check name =
@@ -163,6 +196,7 @@ module Report = struct
       [
         error
           [
+            Text "Kind mismatch";
             Text ("Expected kind: " ^ Type.(pretty_kind (KArrow (KType, KType))));
             Text ("But got: " ^ Type.pretty_kind actual);
           ];
@@ -207,7 +241,20 @@ module Core = struct
   open T
 
   (** Constrains two types to equal each other *)
-  let constrain ty ty' = tell [ (ty, ty') ]
+  let constrain ty ty' ?(message = "") (sp, sp') =
+    tell
+      [ (ty, ty', Mismatch { left = (ty, sp); right = (ty', sp'); message }) ]
+
+  let constrain_app fun_t (arg_t, ret_t) ?(message = "") (sp, sp') =
+    tell
+      [
+        ( fun_t,
+          Type.Arrow (arg_t, ret_t),
+          Mismatch { left = (fun_t, sp); right = (arg_t, sp'); message } );
+      ]
+
+  let expect expected actual span message =
+    tell [ (expected, actual, Unexpected { got = (actual, span); message }) ]
 
   (** Scope a name and type to an operation *)
   let scope name ty p = local (Ctx.insert name (Type.mono ty)) p
@@ -252,12 +299,23 @@ module Core = struct
   let substitute_constraints (name : string) (ty : Type.mono) (cs : constraints)
       : constraints =
     let rewrite = substitute name ty in
-    List.map (fun (l, r) -> (rewrite l, rewrite r)) cs
+    List.map (fun (l, r, e) -> (rewrite l, rewrite r, e)) cs
+
+  let substitute_constraint_ctx (name : string) (new_ : Type.mono) = function
+    | Mismatch { left = ty, sp; right = ty', sp'; message } ->
+        Mismatch
+          {
+            left = (substitute name new_ ty, sp);
+            right = (substitute name new_ ty', sp');
+            message;
+          }
+    | Unexpected { got = ty', sp'; message } ->
+        Unexpected { got = (substitute name new_ ty', sp'); message }
 
   (** Solves a set of constraints to set of substitutions to perform *)
   let rec solve_constraints : constraints -> subst t = function
     | [] -> pure []
-    | (ty, ty') :: cs -> (
+    | (ty, ty', extra) :: cs -> (
         match (ty, ty') with
         | Int, Int | Bool, Bool -> solve_constraints cs
         | Var tv, Var tv' when tv = tv' -> solve_constraints cs
@@ -265,13 +323,20 @@ module Core = struct
         | Var tv, ty | ty, Var tv ->
             let* _ = occurs_check tv ty in
             let cs = substitute_constraints tv ty cs in
+            let cs =
+              List.map
+                (fun (ty, ty', c_ctx) ->
+                  let c_ctx = substitute_constraint_ctx tv ty c_ctx in
+                  (ty, ty', c_ctx))
+                cs
+            in
             let* subs = solve_constraints cs in
             pure ((tv, ty) :: subs)
         | App (t1, t2), App (t1', t2') ->
-            solve_constraints ((t1, t1') :: (t2, t2') :: cs)
+            solve_constraints ((t1, t1', extra) :: (t2, t2', extra) :: cs)
         | Arrow (t1, t2), Arrow (t1', t2') ->
-            solve_constraints ((t1, t1') :: (t2, t2') :: cs)
-        | _, _ -> Report.cannot_solve_constraint ty ty')
+            solve_constraints ((t1, t1', extra) :: (t2, t2', extra) :: cs)
+        | _, _ -> Report.cannot_solve_constraint ty ty' extra)
 
   (** Applies a substitution to a type *)
   let rec apply (ss : subst) (ty : Type.mono) : Type.mono =
@@ -335,8 +400,8 @@ module Core = struct
         let expr_vars = free_vars expr in
         let alts_vars =
           List.fold_left
-            (fun s (Cst.PCon (_, vars), case) ->
-              let vars = vars in
+            (fun s ((Cst.PCon (_, vars), _), case) ->
+              let vars = List.map (fun (v, _) -> v) vars in
               let case = free_vars case in
               let alt_vars =
                 List.fold_left (fun s v -> StrSet.remove v s) case vars
@@ -369,7 +434,7 @@ module Core = struct
     in
     StrMap.of_seq (List.to_seq free_terms)
 
-  (** Generalizes a monophorphic type to a polymmorphic type *)
+  (** Generalizes a monomorphic type to a polymorphic type *)
   let generalize (ty : Type.mono) : Type.poly =
     let ty_vars = List.of_seq (StrSet.to_seq (free_ty_vars ty)) in
     Type.Poly (ty_vars, ty)
@@ -470,14 +535,22 @@ module TyEngine = struct
           (let* def_t, def = infer def in
            Core.scope name def_t
              (let* body_t, body = infer body in
-              let* _ = Core.constrain expr_t def_t in
+              let* _ = Core.constrain expr_t def_t (span, Tast.get_span def) in
               with_type (ELet (body_t, span, name, def, body))))
     | EIf (span, cond, con, alt) ->
         let* cond_t, cond = infer cond in
-        let* _ = Core.constrain cond_t Bool in
+        let* _ =
+          Core.expect Bool cond_t
+            (Tast.get_span cond (* TODO: Fix this *))
+            "But if-condition must be Bool"
+        in
         let* con_t, con = infer con in
         let* alt_t, alt = infer alt in
-        let* _ = Core.constrain con_t alt_t in
+        let* _ =
+          Core.constrain con_t alt_t
+            ~message:"If branches must have the same type"
+            (Tast.get_span con, Tast.get_span alt)
+        in
         with_type (EIf (con_t, span, cond, con, alt))
     | ELam (span, param, ann, body) ->
         let* param_t = Option.fold ~none:Core.fresh_var ~some:Resolve.ty ann in
@@ -488,43 +561,80 @@ module TyEngine = struct
         let* out_t = Core.fresh_var in
         let* func_t, func = infer func in
         let* arg_t, arg = infer arg in
-        let* _ = Core.constrain func_t (Type.Arrow (arg_t, out_t)) in
+        let* _ =
+          Core.constrain_app func_t (arg_t, out_t)
+            (Tast.get_span func, Tast.get_span arg (* TODO: Fix this *))
+        in
         with_type (EApp (out_t, span, func, arg))
     | EAnn (_, expr, ann) ->
         let* ann_t = Resolve.ty ann in
         let* expr_t, expr = infer expr in
-        let* _ = Core.constrain expr_t ann_t in
+        let* _ =
+          Core.constrain expr_t ann_t (Tast.get_span expr, Cst.span_of_ty ann)
+        in
         with_type expr
     | EMatch (span, expr, alts) ->
-        let* out_t = Core.fresh_var in
         let* expr_t, expr = infer expr in
-        let* ctx = ask in
+        (* TODO: Make use of hd/tl safe.
+                 We only parse match-expressions with at least one alternative,
+                 but it would be better to avoid potential exceptions. *)
+        let ((_, case_expr) as alt), alts = (List.hd alts, List.tl alts) in
+        let* alt_t, alt = infer_first_alt ~expr_t ~expr alt in
         let* alts =
           traverse_list
-            (fun (Cst.PCon (head, vars), case) ->
-              match Ctx.lookup head ctx with
-              | None -> Report.unbound_constructor head span
-              | Some scheme ->
-                  let* ty = Core.instantiate scheme in
-                  let arity = Type.get_arity ty in
-                  if not (arity = List.length vars) then
-                    Report.constructor_arity_mismatch span head arity
-                      (List.length vars)
-                  else
-                    let head_t = Type.final_type ty in
-                    let* _ = Core.constrain expr_t head_t in
-                    let ctx' =
-                      Ctx.of_terms_list
-                        (List.zip vars
-                           (List.map Type.mono (Type.split_arrow ty)))
-                    in
-                    local (Ctx.union ctx')
-                      (let* case_t, case = infer case in
-                       let* _ = Core.constrain out_t case_t in
-                       pure (Tast.PCon (head, vars), case)))
+            (infer_alt ~expr_t ~expr ~body_t:alt_t
+               ~span:(Cst.span_of_expr case_expr))
             alts
         in
-        with_type (EMatch (out_t, span, expr, alts))
+        let _, alts = List.unzip alts in
+        with_type (EMatch (alt_t, span, expr, alt :: alts))
+
+  (* TODO: clean up infer_first_alt/infer_alt *)
+  and infer_first_alt ~expr_t ~expr
+      ((Cst.PCon ((head, h_span), spanned_vars), p_span), case) =
+    let* ctx = ask in
+    let vars, _var_spans = List.unzip spanned_vars in
+    match Ctx.lookup head ctx with
+    | None -> Report.unbound_constructor head h_span
+    | Some scheme ->
+        let* ty = Core.instantiate scheme in
+        let arity = Type.get_arity ty in
+        if not (arity = List.length vars) then
+          Report.constructor_arity_mismatch p_span head arity (List.length vars)
+        else
+          let head_t = Type.final_type ty in
+          let* _ = Core.constrain expr_t head_t (Tast.get_span expr, h_span) in
+          let ctx' =
+            Ctx.of_terms_list
+              (List.zip vars (List.map Type.mono (Type.split_arrow ty)))
+          in
+          local (Ctx.union ctx')
+            (let* case_t, case = infer case in
+             pure (case_t, (Tast.PCon (head, vars), case)))
+
+  and infer_alt ~expr_t ~expr ~body_t ~span
+      ((Cst.PCon ((head, h_span), spanned_vars), p_span), case) :
+      (Type.mono * (Tast.pat * Tast.expr)) t =
+    let* ctx = ask in
+    let vars, _var_spans = List.unzip spanned_vars in
+    match Ctx.lookup head ctx with
+    | None -> Report.unbound_constructor head h_span
+    | Some scheme ->
+        let* ty = Core.instantiate scheme in
+        let arity = Type.get_arity ty in
+        if not (arity = List.length vars) then
+          Report.constructor_arity_mismatch p_span head arity (List.length vars)
+        else
+          let head_t = Type.final_type ty in
+          let* _ = Core.constrain expr_t head_t (Tast.get_span expr, h_span) in
+          let ctx' =
+            Ctx.of_terms_list
+              (List.zip vars (List.map Type.mono (Type.split_arrow ty)))
+          in
+          local (Ctx.union ctx')
+            (let* case_t, case = infer case in
+             let* _ = Core.constrain body_t case_t (span, Tast.get_span case) in
+             pure (case_t, (Tast.PCon (head, vars), case)))
 end
 
 (* Terms *)
@@ -533,25 +643,28 @@ end
 let infer_def (def : Cst.tm_def) : Tast.tm_def T.t =
   let open T in
   let* ctx = ask in
-  let make_constr name ty =
+  let make_constr name ty sp sp' =
     match Ctx.lookup name ctx with
     | None -> pure ()
     | Some scheme ->
         let* ty' = Core.instantiate scheme in
-        Core.constrain ty ty'
+        Core.constrain ty ty' (sp, sp')
   in
   match def with
   | span, name, None, expr ->
       let* expr_t, expr = TyEngine.infer expr in
-      let* _ = make_constr name expr_t in
+      let* _ = make_constr name expr_t (Tast.get_span expr) span in
       let scheme = Core.generalize expr_t in
       pure (Tast.TmDef { scheme; span; name; expr })
   | span, name, Some ann, expr ->
       let* ann_t = Resolve.scheme ann in
       let ann_t = Type.get_mono_type ann_t in
       let* expr_t, expr = TyEngine.infer expr in
-      let* _ = Core.constrain ann_t expr_t in
-      let* _ = make_constr name expr_t in
+      let* _ =
+        Core.constrain ann_t expr_t
+          (span (* TODO: Fix this *), Tast.get_span expr)
+      in
+      let* _ = make_constr name expr_t (Tast.get_span expr) span in
       let scheme = Core.generalize expr_t in
       pure (Tast.TmDef { scheme; span; name; expr })
 
@@ -585,7 +698,9 @@ let solve_def_group (ctx : ty_ctx) (defs : Cst.tm_def list) =
                (function
                  | Tast.TmDef { scheme; span; name; expr } ->
                      let scheme =
-                       scheme |> Type.get_mono_type |> Core.apply subst
+                       scheme
+                       |> Type.get_mono_type
+                       |> Core.apply subst
                        |> Core.generalize
                      in
                      let subst', scheme = Core.normalize_scheme scheme in
@@ -612,7 +727,7 @@ let solve_defs (ctx : ty_ctx) (defs : Cst.tm_def list) =
     List.map (List.filter_map (fun name -> StrMap.find_opt name top_level)) scc
   in
   let result =
-    StateResult.traverse_list
+    StateResult.accumulate_list
       (fun bs ctx ->
         match solve_def_group ctx bs with
         | Error e -> Error e
