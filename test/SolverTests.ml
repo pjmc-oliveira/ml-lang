@@ -2,7 +2,6 @@ open OUnit2
 open Ml_lang
 open Extensions
 open Result.Syntax
-module Ctx = Solver.Ctx
 
 (* TODO: pretty print *)
 let string_of_ctx ctx =

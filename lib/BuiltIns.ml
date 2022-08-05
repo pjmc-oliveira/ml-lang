@@ -1,8 +1,5 @@
-module TmCtx = Ctx.Make (String)
-module TyCtx = Solver.Ctx
-
 let tm_ctx =
-  TmCtx.of_list
+  Env.of_list
     [
       (* Int arithmetic *)
       ( "add",
@@ -88,7 +85,7 @@ let tm_ctx =
     ]
 
 let ty_ctx =
-  TyCtx.of_terms_list
+  Ctx.of_terms_list
     [
       (* Int arithmetic *)
       ("add", Type.(Poly ([], Arrow (Int, Arrow (Int, Int)))));

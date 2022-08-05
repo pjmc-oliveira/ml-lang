@@ -1,41 +1,67 @@
-module type S = sig
-  type 'a t
-  type key
+module StrCtx = Map.Make (String)
 
-  val empty : 'a t
-  val insert : key -> 'a -> 'a t -> 'a t
-  val lookup : key -> 'a t -> 'a option
-  val remove : key -> 'a t -> 'a t
-  val of_list : (key * 'a) list -> 'a t
-  val to_list : 'a t -> (key * 'a) list
-  val equal : ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
-  val union : 'a t -> 'a t -> 'a t
-  val map : ('a -> 'a) -> 'a t -> 'a t
-end
+type key = string
 
-module type Ord = sig
-  type t
+type t = {
+  types : Type.kind StrCtx.t;
+  terms : Type.poly StrCtx.t;
+  constructors_of_type : string list StrCtx.t;
+}
 
-  val compare : t -> t -> int
-end
+let empty =
+  {
+    types = StrCtx.empty;
+    terms = StrCtx.empty;
+    constructors_of_type = StrCtx.empty;
+  }
 
-module Make (Key : Ord) : S with type key = Key.t = struct
-  module KeyMap = Map.Make (Key)
+let insert name ty ctx = { ctx with terms = StrCtx.add name ty ctx.terms }
+let lookup name ctx = StrCtx.find_opt name ctx.terms
 
-  type 'a t = 'a KeyMap.t
-  type key = Key.t
+let insert_ty name kind ctx =
+  { ctx with types = StrCtx.add name kind ctx.types }
 
-  let empty = KeyMap.empty
-  let insert = KeyMap.add
-  let lookup = KeyMap.find_opt
-  let remove = KeyMap.remove
-  let of_list pairs = KeyMap.of_seq (List.to_seq pairs)
-  let to_list ctx = KeyMap.to_seq ctx |> List.of_seq
-  let equal = KeyMap.equal
+let lookup_ty name ctx = StrCtx.find_opt name ctx.types
+let lookup_constructors name ctx = StrCtx.find_opt name ctx.constructors_of_type
 
-  let union left right =
-    (* TODO: Which precedence does this have? *)
-    KeyMap.fold insert right left
+let of_list ~terms ~types =
+  {
+    types = StrCtx.of_seq (List.to_seq types);
+    terms = StrCtx.of_seq (List.to_seq terms);
+    constructors_of_type = StrCtx.empty;
+  }
 
-  let map = KeyMap.map
-end
+let of_terms_list terms_list =
+  {
+    types = StrCtx.empty;
+    terms = StrCtx.of_seq (List.to_seq terms_list);
+    constructors_of_type = StrCtx.empty;
+  }
+
+let of_types_list types_list =
+  {
+    terms = StrCtx.empty;
+    types = StrCtx.of_seq (List.to_seq types_list);
+    constructors_of_type = StrCtx.empty;
+  }
+
+let of_constructors_list constructors_list =
+  {
+    terms = StrCtx.empty;
+    types = StrCtx.empty;
+    constructors_of_type = StrCtx.of_seq (List.to_seq constructors_list);
+  }
+
+let to_terms_list ctx = List.of_seq (StrCtx.to_seq ctx.terms)
+let to_types_list ctx = List.of_seq (StrCtx.to_seq ctx.types)
+let tm_equal cmp left right = StrCtx.equal cmp left.terms right.terms
+let ty_equal cmp left right = StrCtx.equal cmp left.types right.types
+let union_helper left right = StrCtx.fold StrCtx.add right left
+
+let union left right =
+  {
+    types = union_helper left.types right.types;
+    terms = union_helper left.terms right.terms;
+    constructors_of_type =
+      union_helper left.constructors_of_type right.constructors_of_type;
+  }

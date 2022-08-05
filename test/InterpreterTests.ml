@@ -2,11 +2,9 @@ open OUnit2
 open Ml_lang
 open Extensions
 open Result.Syntax
-module TyCtx = Solver.Ctx
-module TmCtx = Interpreter.TmCtx
 
-let interpret_module ?(entrypoint = "main") ?(tm_ctx = TmCtx.empty)
-    ?(ty_ctx = TyCtx.empty) str =
+let interpret_module ?(entrypoint = "main") ?(tm_ctx = Env.empty)
+    ?(ty_ctx = Ctx.empty) str =
   let src = Source.of_string str in
   let* tks = Lexer.tokens src in
   let* m = Parser.(parse module_ tks) in
@@ -32,16 +30,16 @@ let string_of_result_lines (r : (Value.t, Error.Line.t list list) result) =
       let lines = List.map (String.concat "; ") lines in
       "Error [" ^ String.concat "\n" lines ^ "]"
 
-let test_interpreter label str ?(entrypoint = "main") ?(tm_ctx = TmCtx.empty)
-    ?(ty_ctx = TyCtx.empty) expected =
+let test_interpreter label str ?(entrypoint = "main") ?(tm_ctx = Env.empty)
+    ?(ty_ctx = Ctx.empty) expected =
   label >:: fun _ ->
   assert_equal
     ~printer:(string_of_result (Source.of_string str))
     (Ok expected)
     (interpret_module ~entrypoint ~tm_ctx ~ty_ctx str)
 
-let test_failure label str ?(entrypoint = "main") ?(tm_ctx = TmCtx.empty)
-    ?(ty_ctx = TyCtx.empty) (expected : Error.Line.t list list) =
+let test_failure label str ?(entrypoint = "main") ?(tm_ctx = Env.empty)
+    ?(ty_ctx = Ctx.empty) (expected : Error.Line.t list list) =
   label >:: fun _ ->
   let result = interpret_module ~entrypoint ~tm_ctx ~ty_ctx str in
   assert_equal ~printer:string_of_result_lines (Error expected)
@@ -160,8 +158,8 @@ let suite =
             }"
            (Int 1);
          (let tm_ctx =
-            TmCtx.union BuiltIns.tm_ctx
-              (TmCtx.of_list
+            Env.union BuiltIns.tm_ctx
+              (Env.of_list
                  [
                    ( "exit",
                      Value.(
@@ -171,8 +169,8 @@ let suite =
                  ])
           in
           let ty_ctx =
-            TyCtx.union BuiltIns.ty_ctx
-              (TyCtx.of_terms_list [ ("exit", Type.(mono (Arrow (Int, Int)))) ])
+            Ctx.union BuiltIns.ty_ctx
+              (Ctx.of_terms_list [ ("exit", Type.(mono (Arrow (Int, Int)))) ])
           in
           test_interpreter ~tm_ctx ~ty_ctx "non-strict function application"
             "module Hello = {
@@ -217,8 +215,8 @@ let suite =
             }"
            (Int 2);
          (let tm_ctx =
-            TmCtx.union BuiltIns.tm_ctx
-              (TmCtx.of_list
+            Env.union BuiltIns.tm_ctx
+              (Env.of_list
                  [
                    ( "exit",
                      Value.(
@@ -228,8 +226,8 @@ let suite =
                  ])
           in
           let ty_ctx =
-            TyCtx.union BuiltIns.ty_ctx
-              (TyCtx.of_terms_list [ ("exit", Type.(mono (Arrow (Int, Int)))) ])
+            Ctx.union BuiltIns.ty_ctx
+              (Ctx.of_terms_list [ ("exit", Type.(mono (Arrow (Int, Int)))) ])
           in
           test_interpreter ~tm_ctx ~ty_ctx
             "match expression should only evaluate to weak-head normal form"

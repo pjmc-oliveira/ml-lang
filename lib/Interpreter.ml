@@ -1,12 +1,11 @@
 open Extensions
-module TmCtx = Ctx.Make (Stdlib.String)
 
-type tm_ctx = Value.t TmCtx.t
+type tm_env = Value.t Env.t
 
 module S = StateResult
 open StateResult.Syntax
 
-type 'a t = ('a, tm_ctx, Error.t list) StateResult.t
+type 'a t = ('a, tm_env, Error.t list) StateResult.t
 
 let error ?location lines : Error.t = { kind = Interpreter; lines; location }
 
@@ -18,44 +17,44 @@ let traverse_list (f : 'a -> 'b t) (ls : 'a list) : 'b list t =
       S.pure (y :: ys))
     ls (S.pure [])
 
-let lookup location name ctx =
-  match TmCtx.lookup name ctx with
+let lookup location name env =
+  match Env.lookup name env with
   | Some value -> Ok value
   | None -> Error (error ~location [ Text ("Unbound variable: " ^ name) ])
 
-let define name value ctx = TmCtx.insert name value ctx
+let define name value env = Env.insert name value env
 
-let defer (expr : Tast.expr) (ctx : tm_ctx) : Value.t =
-  Value.Thunk { ctx; expr }
+let defer (expr : Tast.expr) (env : tm_env) : Value.t =
+  Value.Thunk { env; expr }
 
-let fix name expr ctx = Value.Fix { ctx; name; expr }
+let fix name expr env = Value.Fix { env; name; expr }
 
 (** Evaluate an expression in a context *)
-let rec eval (e : Tast.expr) (ctx : tm_ctx) : (Value.t, Error.t) result =
+let rec eval (e : Tast.expr) (env : tm_env) : (Value.t, Error.t) result =
   let open Result.Syntax in
   match e with
   | ELit (_, _, Int value) -> Ok (Value.Int value)
   | ELit (_, _, Bool value) -> Ok (Value.Bool value)
-  | EVar (_, span, name) -> lookup span name ctx
+  | EVar (_, span, name) -> lookup span name env
   | ELet (_, _, name, def, body) ->
-      let fixpoint = fix name def ctx in
-      let ctx' = define name fixpoint ctx in
-      eval body ctx'
+      let fixpoint = fix name def env in
+      let env' = define name fixpoint env in
+      eval body env'
   | EIf (_, _, cond, con, alt) -> (
-      let* cond = eval cond ctx in
+      let* cond = eval cond env in
       let* cond = force cond in
       match cond with
-      | Bool true -> eval con ctx
-      | Bool false -> eval alt ctx
+      | Bool true -> eval con env
+      | Bool false -> eval alt env
       | _ -> failwith ("Impossible if-cond not bool: " ^ Value.show cond))
-  | ELam (_, _, _, param, body) -> Ok (Value.Closure { ctx; param; body })
+  | ELam (_, _, _, param, body) -> Ok (Value.Closure { env; param; body })
   | EApp (_, _, func, arg) -> (
-      let arg' = defer arg ctx in
-      let* func = eval func ctx in
+      let arg' = defer arg env in
+      let* func = eval func env in
       (* Only evaluate to WHNF so that we can apply the constructor lazily *)
       let* func = whnf func in
       match func with
-      | Closure { ctx = closure_ctx; param; body } ->
+      | Closure { env = closure_ctx; param; body } ->
           let closure_ctx' = define param arg' closure_ctx in
           eval body closure_ctx'
       | Con { head; tail } ->
@@ -64,14 +63,14 @@ let rec eval (e : Tast.expr) (ctx : tm_ctx) : (Value.t, Error.t) result =
       | Native func ->
           (* Defer to create a thunk value from the ast
              then force to pass it into the native function *)
-          let arg = defer arg ctx in
+          let arg = defer arg env in
           let* arg = force arg in
           Ok (func arg)
       | _ ->
           failwith ("Imposible cannot apply to non-function: " ^ Value.show func)
       )
   | EMatch (_, _, expr, alts) -> (
-      let* expr = eval expr ctx in
+      let* expr = eval expr env in
       let* expr = whnf expr in
       match expr with
       | Con { head; tail } -> (
@@ -80,12 +79,12 @@ let rec eval (e : Tast.expr) (ctx : tm_ctx) : (Value.t, Error.t) result =
           with
           | None -> failwith ("Un-matched pattern: " ^ Value.show expr)
           | Some (PCon (_, vars), case) ->
-              let ctx' =
+              let env' =
                 List.fold_left
-                  (fun ctx (name, value) -> define name value ctx)
-                  ctx (List.zip vars tail)
+                  (fun env (name, value) -> define name value env)
+                  env (List.zip vars tail)
               in
-              eval case ctx')
+              eval case env')
       | _ ->
           failwith
             ("Imposible cannot match to non-constructor: " ^ Value.show expr))
@@ -98,13 +97,13 @@ and whnf (v : Value.t) : (Value.t, Error.t) result =
   | Bool b -> Ok (Value.Bool b)
   | Con { head; tail } -> Ok (Value.Con { head; tail })
   | Closure f -> Ok (Value.Closure f)
-  | Thunk { ctx; expr } ->
-      let* expr = eval expr ctx in
+  | Thunk { env; expr } ->
+      let* expr = eval expr env in
       whnf expr
   | Native _ -> Ok v
-  | Fix { ctx; name; expr } ->
-      let ctx' = define name (Value.Fix { ctx; name; expr }) ctx in
-      let* expr = eval expr ctx' in
+  | Fix { env; name; expr } ->
+      let env' = define name (Value.Fix { env; name; expr }) env in
+      let* expr = eval expr env' in
       (* TODO: should this be a recursive or base call? *)
       whnf expr
 
@@ -118,32 +117,32 @@ and force (v : Value.t) : (Value.t, Error.t) result =
       let* tail = Result.traverse_list force tail in
       Ok (Value.Con { head; tail })
   | Closure f -> Ok (Value.Closure f)
-  | Thunk { ctx; expr } ->
-      let* expr = eval expr ctx in
+  | Thunk { env; expr } ->
+      let* expr = eval expr env in
       force expr
   | Native _ -> Ok v
-  | Fix { ctx; name; expr } ->
-      let ctx' = define name (Value.Fix { ctx; name; expr }) ctx in
-      let* expr = eval expr ctx' in
+  | Fix { env; name; expr } ->
+      let env' = define name (Value.Fix { env; name; expr }) env in
+      let* expr = eval expr env' in
       force expr
 
-let term_def (b : Tast.tm_def) (ctx : tm_ctx) :
-    (Value.t * tm_ctx, Error.t list) result =
+let term_def (b : Tast.tm_def) (env : tm_env) :
+    (Value.t * tm_env, Error.t list) result =
   let open Result.Syntax in
   Result.map_error
     (fun e -> [ e ])
     (match b with
     | TmDef { expr; _ } ->
-        let* value = eval expr ctx in
-        Ok (value, ctx))
+        let* value = eval expr env in
+        Ok (value, env))
 
-let defer_term_def (tm_def : Tast.tm_def) (ctx : tm_ctx) :
-    (Value.t * tm_ctx, Error.t list) result =
+let defer_term_def (tm_def : Tast.tm_def) (env : tm_env) :
+    (Value.t * tm_env, Error.t list) result =
   match tm_def with
   | TmDef { name; expr; _ } ->
-      let fixpoint = fix name expr ctx in
-      let ctx' = define name fixpoint ctx in
-      Ok (fixpoint, ctx')
+      let fixpoint = fix name expr env in
+      let env' = define name fixpoint env in
+      Ok (fixpoint, env')
 
 let find_entrypoint entrypoint tm_defs : Tast.tm_def option =
   List.find_opt (fun (Tast.TmDef { name; _ }) -> name = entrypoint) tm_defs
@@ -151,24 +150,24 @@ let find_entrypoint entrypoint tm_defs : Tast.tm_def option =
 let make_type_constructor ((head, _tys) : string * Type.poly) =
   Value.Con { head; tail = [] }
 
-let add_type_constructors (TyDef { alts; _ } : Tast.ty_def) (ctx : tm_ctx) :
-    tm_ctx =
+let add_type_constructors (TyDef { alts; _ } : Tast.ty_def) (env : tm_env) :
+    tm_env =
   let cons =
     List.map (fun ((name, _) as alt) -> (name, make_type_constructor alt)) alts
   in
-  let ctx' = TmCtx.of_list cons in
-  TmCtx.union ctx' ctx
+  let env' = Env.of_list cons in
+  Env.union env' env
 
 let module_ entrypoint (m : Tast.modu) : Value.t t =
   match m with
   | Module { span; terms; types; _ } ->
-      let* ctx = S.get in
-      let ctx' =
+      let* env = S.get in
+      let env' =
         List.fold_left
-          (fun ctx ty_def -> add_type_constructors ty_def ctx)
-          ctx types
+          (fun env ty_def -> add_type_constructors ty_def env)
+          env types
       in
-      let* _ = S.set ctx' in
+      let* _ = S.set env' in
       let* _ = traverse_list defer_term_def terms in
       let* b =
         match find_entrypoint entrypoint terms with
@@ -182,7 +181,7 @@ let module_ entrypoint (m : Tast.modu) : Value.t t =
       in
       term_def b
 
-let run ?(entrypoint = "main") ?(context = TmCtx.empty) (m : Tast.modu) :
+let run ?(entrypoint = "main") ?(context = Env.empty) (m : Tast.modu) :
     (Value.t, Error.t list) result =
   let open Result.Syntax in
   match (module_ entrypoint) m context with
