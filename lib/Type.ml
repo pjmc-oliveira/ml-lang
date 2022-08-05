@@ -20,8 +20,7 @@ let rec pretty_kind = function
 let rec pretty_mono = function
   | Int -> "Int"
   | Bool -> "Bool"
-  | Con name -> name
-  | Var name -> name
+  | Con name | Var name -> name
   | App (func, (App _ as arg)) ->
       pretty_mono func ^ " (" ^ pretty_mono arg ^ ")"
   | App (func, arg) -> pretty_mono func ^ " " ^ pretty_mono arg
