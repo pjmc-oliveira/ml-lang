@@ -1,26 +1,19 @@
 module Hello = {
-  def nil =
-    \on_nil : Int .
-    \on_cons : Int -> Int -> Int .
-    on_nil
+  type List a = Nil | Cons a (List a)
+  type Maybe a = None | Some a
 
-  def cons =
-    \head : Int .
-    \tail : Int -> (Int -> Int -> Int) -> Int .
-    \on_nil : Int .
-    \on_cons : Int -> Int -> Int .
-    on_cons head (tail on_nil on_cons)
+  def overlapping = \ls
+    match ls with
+      | Nil -> None
+      | Nil -> None
+      | Cons h t -> None
+      | Cons h t -> Some h
+    end
 
-  def length =
-    \list : Int -> (Int -> Int -> Int) -> Int .
-    list
-      0
-      (\head
-       \tail add 1 tail )
+  def missing = \ls
+    match ls with
+      | Nil -> None
+    end
 
-  def identity : forall a. a -> a = \x x
-
-
-
-  def main = length (cons 1 (cons 2 nil))
+  def main = 1
 }

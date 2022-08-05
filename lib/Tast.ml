@@ -1,3 +1,5 @@
+open Extensions
+
 type lit = Int of int | Bool of bool [@@deriving show]
 type pat = PCon of string * string list [@@deriving show]
 
@@ -10,6 +12,16 @@ type expr =
   | ELam of Type.mono * Type.mono * Source.Span.t * string * expr
   | EApp of Type.mono * Source.Span.t * expr * expr
   | EMatch of Type.mono * Source.Span.t * expr * (pat * expr) list
+[@@deriving show]
+
+type 'a expr_f =
+  | ELitF of Type.mono * Source.Span.t * lit
+  | EVarF of Type.mono * Source.Span.t * string
+  | ELetF of Type.mono * Source.Span.t * string * 'a * 'a
+  | EIfF of Type.mono * Source.Span.t * 'a * 'a * 'a
+  | ELamF of Type.mono * Type.mono * Source.Span.t * string * 'a
+  | EAppF of Type.mono * Source.Span.t * 'a * 'a
+  | EMatchF of Type.mono * Source.Span.t * 'a * (pat * 'a) list
 [@@deriving show]
 
 type ty_def =
@@ -75,3 +87,46 @@ let get_span = function
   | ELam (_, _, sp, _, _) -> sp
   | EApp (_, sp, _, _) -> sp
   | EMatch (_, sp, _, _) -> sp
+
+let expr_f_to_expr : expr expr_f -> expr = function
+  | ELitF (ty, sp, lit) -> ELit (ty, sp, lit)
+  | EVarF (ty, sp, name) -> EVar (ty, sp, name)
+  | ELetF (ty, sp, name, def, body) -> ELet (ty, sp, name, def, body)
+  | EIfF (ty, sp, cond, con, alt) -> EIf (ty, sp, cond, con, alt)
+  | ELamF (param_t, body_t, sp, param, body) ->
+      ELam (param_t, body_t, sp, param, body)
+  | EAppF (ty, sp, func, arg) -> EApp (ty, sp, func, arg)
+  | EMatchF (ty, sp, expr, cases) -> EMatch (ty, sp, expr, cases)
+
+let rec fold_expr_result (f : 'a expr_f -> ('a, 'e) result) :
+    expr -> ('a, 'e) result =
+  let open Result.Syntax in
+  function
+  | ELit (ty, sp, lit) -> f (ELitF (ty, sp, lit))
+  | EVar (ty, sp, name) -> f (EVarF (ty, sp, name))
+  | ELet (ty, sp, name, def, body) ->
+      let* def = fold_expr_result f def in
+      let* body = fold_expr_result f body in
+      f (ELetF (ty, sp, name, def, body))
+  | EIf (ty, sp, cond, con, alt) ->
+      let* cond = fold_expr_result f cond in
+      let* con = fold_expr_result f con in
+      let* alt = fold_expr_result f alt in
+      f (EIfF (ty, sp, cond, con, alt))
+  | ELam (in_t, out_t, sp, param, body) ->
+      let* body = fold_expr_result f body in
+      f (ELamF (in_t, out_t, sp, param, body))
+  | EApp (ty, sp, func, arg) ->
+      let* func = fold_expr_result f func in
+      let* arg = fold_expr_result f arg in
+      f (EAppF (ty, sp, func, arg))
+  | EMatch (ty, sp, expr, alts) ->
+      let* expr = fold_expr_result f expr in
+      let* alts =
+        Result.traverse_list
+          (fun (p, e) ->
+            let* e = fold_expr_result f e in
+            Ok (p, e))
+          alts
+      in
+      f (EMatchF (ty, sp, expr, alts))

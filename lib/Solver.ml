@@ -6,9 +6,19 @@ module StrSCC = SCC.Make (String)
 module Ctx = struct
   module StrCtx = Ctx.Make (String)
 
-  type t = { types : Type.kind StrCtx.t; terms : Type.poly StrCtx.t }
+  type t = {
+    types : Type.kind StrCtx.t;
+    terms : Type.poly StrCtx.t;
+    constructors_of_type : string list StrCtx.t;
+  }
 
-  let empty = { types = StrCtx.empty; terms = StrCtx.empty }
+  let empty =
+    {
+      types = StrCtx.empty;
+      terms = StrCtx.empty;
+      constructors_of_type = StrCtx.empty;
+    }
+
   let insert name ty ctx = { ctx with terms = StrCtx.insert name ty ctx.terms }
   let lookup name ctx = StrCtx.lookup name ctx.terms
 
@@ -16,15 +26,35 @@ module Ctx = struct
     { ctx with types = StrCtx.insert name kind ctx.types }
 
   let lookup_ty name ctx = StrCtx.lookup name ctx.types
+  let lookup_constructors name ctx = StrCtx.lookup name ctx.constructors_of_type
 
   let of_list ~terms ~types =
-    { types = StrCtx.of_list types; terms = StrCtx.of_list terms }
+    {
+      types = StrCtx.of_list types;
+      terms = StrCtx.of_list terms;
+      constructors_of_type = StrCtx.empty;
+    }
 
   let of_terms_list terms_list =
-    { types = StrCtx.empty; terms = StrCtx.of_list terms_list }
+    {
+      types = StrCtx.empty;
+      terms = StrCtx.of_list terms_list;
+      constructors_of_type = StrCtx.empty;
+    }
 
   let of_types_list types_list =
-    { terms = StrCtx.empty; types = StrCtx.of_list types_list }
+    {
+      terms = StrCtx.empty;
+      types = StrCtx.of_list types_list;
+      constructors_of_type = StrCtx.empty;
+    }
+
+  let of_constructors_list constructors_list =
+    {
+      terms = StrCtx.empty;
+      types = StrCtx.empty;
+      constructors_of_type = StrCtx.of_list constructors_list;
+    }
 
   let to_terms_list ctx = StrCtx.to_list ctx.terms
   let to_types_list ctx = StrCtx.to_list ctx.types
@@ -35,6 +65,8 @@ module Ctx = struct
     {
       types = StrCtx.union left.types right.types;
       terms = StrCtx.union left.terms right.terms;
+      constructors_of_type =
+        StrCtx.union left.constructors_of_type right.constructors_of_type;
     }
 end
 
@@ -639,6 +671,70 @@ end
 
 (* Terms *)
 
+let check_match_exhaustiveness ctx :
+    Tast.expr -> (Tast.expr, Error.t list) result =
+  let not_exhaustive span missing_cons =
+    {
+      Error.kind = Solver;
+      location = Some span;
+      lines =
+        [
+          Text "Match not exhaustive";
+          Quote span;
+          Text ("Missing patterns: " ^ String.concat ", " missing_cons);
+        ];
+    }
+  in
+  let overlapping_patterns span overlaps =
+    {
+      Error.kind = Solver;
+      location = Some span;
+      lines =
+        [
+          Text ("Overlapping patterns: " ^ String.concat ", " overlaps);
+          Quote span;
+        ];
+    }
+  in
+  Tast.fold_expr_result
+    (let open Result.Syntax in
+    function
+    | EMatchF (_, span, expr, alts) as e ->
+        let ty = Tast.type_of_expr expr in
+        (* TODO: Sort out error message *)
+        let* ty_con = Option.to_result ~none:[] (Type.get_con ty) in
+        let* cons =
+          (* TODO: Sort out error message *)
+          Option.to_result ~none:[] (Ctx.lookup_constructors ty_con ctx)
+        in
+        let pats, _ = List.unzip alts in
+        let heads = List.map (fun (Tast.PCon (head, _)) -> head) pats in
+        let missing_cons =
+          List.filter (fun con -> not (List.mem con heads)) cons
+        in
+        if List.length missing_cons > 0 then
+          Error [ not_exhaustive span missing_cons ]
+        else
+          let duplicate_heads =
+            List.fold_left
+              (fun m h ->
+                StrMap.add h
+                  (Option.fold ~none:1
+                     ~some:(fun n -> n + 1)
+                     (StrMap.find_opt h m))
+                  m)
+              StrMap.empty heads
+            |> StrMap.to_seq
+            |> List.of_seq
+            |> List.filter (fun (_, n) -> n > 1)
+            |> List.map (fun (h, _) -> h)
+          in
+          if List.length heads > List.length cons then
+            Error [ overlapping_patterns span duplicate_heads ]
+          else
+            Ok (Tast.expr_f_to_expr e)
+    | e -> Ok (Tast.expr_f_to_expr e))
+
 (** Infers the type of a single binding *)
 let infer_def (def : Cst.tm_def) : Tast.tm_def T.t =
   let open T in
@@ -687,31 +783,31 @@ let infer_defs (defs : Cst.tm_def list) : Tast.tm_def list T.t =
 
 (** Solves the types of a bind group *)
 let solve_def_group (ctx : ty_ctx) (defs : Cst.tm_def list) =
+  let open Result.Syntax in
   match infer_defs defs ctx 0 with
   | Error es -> Error es
   | Ok (defs, cs, s) -> (
       match Core.solve_constraints cs ctx s with
       | Error es -> Error es
       | Ok (subst, _, _s') ->
-          Ok
-            (List.map
-               (function
-                 | Tast.TmDef { scheme; span; name; expr } ->
-                     let scheme =
-                       scheme
-                       |> Type.get_mono_type
-                       |> Core.apply subst
-                       |> Core.generalize
-                     in
-                     let subst', scheme = Core.normalize_scheme scheme in
-                     (* Apply new substitution first *)
-                     let expr =
-                       Tast.map_type (Core.apply (subst' @ subst)) expr
-                     in
-                     Tast.TmDef { scheme; span; name; expr })
-               defs))
+          Result.traverse_list
+            (function
+              | Tast.TmDef { scheme; span; name; expr } ->
+                  let scheme =
+                    scheme
+                    |> Type.get_mono_type
+                    |> Core.apply subst
+                    |> Core.generalize
+                  in
+                  (* Substitute type, then normalize scheme *)
+                  let expr = Tast.map_type (Core.apply subst) expr in
+                  let subst', scheme = Core.normalize_scheme scheme in
+                  let expr = Tast.map_type (Core.apply subst') expr in
+                  let* expr = check_match_exhaustiveness ctx expr in
+                  Ok (Tast.TmDef { scheme; span; name; expr }))
+            defs)
 
-(** Solves all bindings one strongly connected componenent at a time *)
+(** Solves all bindings one strongly connected component at a time *)
 let solve_defs (ctx : ty_ctx) (defs : Cst.tm_def list) =
   let free_terms = Core.get_free_terms ctx defs in
   let scc = StrSCC.(run (make free_terms)) in
@@ -761,11 +857,19 @@ let solve_types (ty_defs : Cst.ty_def list) =
   let types =
     Ctx.of_types_list (List.map (fun (name, kind, _) -> (name, kind)) new_types)
   in
+  let new_constructors =
+    List.map
+      (fun (name, _, alts) ->
+        let constructors, _ = List.unzip alts in
+        (name, constructors))
+      new_types
+  in
+  let constructors = Ctx.of_constructors_list new_constructors in
   let constructors_of_ty_def (TyDef { alts; _ } : Tast.ty_def) = alts in
-  let constructors =
+  let constructors_terms =
     Ctx.of_terms_list (List.flatten (List.map constructors_of_ty_def ty_defs))
   in
-  pure (Ctx.union types constructors, ty_defs)
+  pure (Ctx.(union types (union constructors constructors_terms)), ty_defs)
 
 (** Infers the type of a module *)
 let module_ (m : Cst.modu) (ctx : ty_ctx) : (Tast.modu, Error.t list) result =

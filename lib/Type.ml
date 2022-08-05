@@ -34,6 +34,14 @@ let get_mono_type = function
 
 let mono ty = Poly ([], ty)
 
+let rec get_con = function
+  | Int -> Some "Int"
+  | Bool -> Some "Bool"
+  | Con name -> Some name
+  | Var _ -> None
+  | App (func, _) -> get_con func
+  | Arrow (_, _) -> None
+
 (** Gets the arity of a type *)
 let rec get_arity = function
   | Int | Bool | Con _ | Var _ | App _ -> 0

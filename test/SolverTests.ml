@@ -537,8 +537,6 @@ module Mono (S : Solver.S) = struct
                  Text "But got: Type -> Type";
                ];
              ];
-           (* TODO: exhaustivity check for match-with *)
-           (* TODO: check overlapping patterns *)
            test_failure "Type definition with wrong kind"
              "module Hello = {
                 type List a =
@@ -590,13 +588,13 @@ module Poly (S : Solver.S) = struct
            (* TODO: Inferred type should match top-level annotation if provided *)
            test_solver ~skip:true "apply annotated polymorphic function"
              "module Hello = {
-              def identity : forall a. a -> a = \\x x
-              def main =
-                if identity True then
-                  1
-                else
-                  2
-            }"
+                def identity : forall a. a -> a = \\x x
+                def main =
+                  if identity True then
+                    1
+                  else
+                    2
+              }"
              (Ctx.of_terms_list
                 [
                   ("identity", Type.(Poly ([ "a" ], Arrow (Var "a", Var "a"))));
@@ -604,13 +602,13 @@ module Poly (S : Solver.S) = struct
                 ]);
            test_solver "infer un-annotated function"
              "module Hello = {
-              def identity = \\x True
-              def main =
-                if identity True then
-                  1
-                else
-                  2
-            }"
+                def identity = \\x True
+                def main =
+                  if identity True then
+                    1
+                  else
+                    2
+              }"
              (Ctx.of_terms_list
                 [
                   ("identity", Type.(Poly ([ "t0" ], Arrow (Var "t0", Bool))));
@@ -620,13 +618,13 @@ module Poly (S : Solver.S) = struct
            (* TODO: top-level annotation should restrict the inferred type *)
            test_failure ~skip:true "incorrect top-level annotation"
              "module Hello = {
-              def identity : forall a. a -> a = \\x True
-              def main =
-                if identity True then
-                  1
-                else
-                  2
-            }"
+                def identity : forall a. a -> a = \\x True
+                def main =
+                  if identity True then
+                    1
+                  else
+                    2
+              }"
              [
                [
                  Text "Type mismatch";
@@ -637,6 +635,37 @@ module Poly (S : Solver.S) = struct
                  Text
                    ("But got: "
                    ^ Type.(show_poly (Poly ([ "a" ], Arrow (Var "a", Bool)))));
+               ];
+             ];
+           test_failure "match-expression not exhaustive"
+             "module Hello = {
+                type Maybe a = None | Some a
+                def main = \\m
+                  match m with
+                    | None -> 1
+                  end
+              }"
+             [
+               [
+                 Text "Match not exhaustive";
+                 Quote { index = 110; line = 4; column = 19; length = 66 };
+                 Text "Missing patterns: Some";
+               ];
+             ];
+           test_failure "match-expression with overlapping patterns"
+             "module Hello = {
+                type Maybe a = None | Some a
+                def main = \\m
+                  match m with
+                    | None -> 1
+                    | Some x -> 1
+                    | Some y -> 3
+                  end
+              }"
+             [
+               [
+                 Text "Overlapping patterns: Some";
+                 Quote { index = 110; line = 4; column = 19; length = 134 };
                ];
              ];
          ]
