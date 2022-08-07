@@ -27,7 +27,7 @@ let tm_ctx =
               let y = get_int r in
               (* TODO: Not sure if this is the right semantics *)
               Int (x / y))) );
-      (* Int comparisson *)
+      (* Int comparison *)
       ( "eq",
         Value.(
           lift2 (fun l r ->
