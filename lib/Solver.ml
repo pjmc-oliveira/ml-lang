@@ -263,6 +263,41 @@ module Kinds = struct
       let* _ = set (n + 1) in
       pure kind
 
+    let rec free_types : Cst.ty -> StrSet.t = function
+      (* TODO: Add primitive types to ctx? *)
+      | TCon (_, "Int") | TCon (_, "Bool") -> StrSet.empty
+      | TCon (_, name) -> StrSet.singleton name
+      | TVar (_, name) -> StrSet.singleton name
+      | TApp (_, func, arg) ->
+          let func_vars = free_types func in
+          let arg_vars = free_types arg in
+          StrSet.union func_vars arg_vars
+      | TArr (_, from, to_) ->
+          let from_vars = free_types from in
+          let to_vars = free_types to_ in
+          StrSet.union from_vars to_vars
+
+    let get_free_types (ctx : Ctx.t) (ty_defs : Cst.ty_def list) =
+      let types_of_alts (alts : Cst.alt list) =
+        List.fold_left StrSet.union StrSet.empty
+          (List.flatten (List.map (fun (_, ty) -> List.map free_types ty) alts))
+      in
+      let free_types =
+        ty_defs
+        |> List.map (fun (_, name, tvars, alts) ->
+               let tvars = StrSet.of_list tvars in
+               let types = types_of_alts alts in
+               let free_types =
+                 types
+                 |> StrSet.filter (fun ty -> not (StrSet.mem ty tvars))
+                 |> StrSet.filter (fun ty ->
+                        Option.is_none (Ctx.lookup_ty ty ctx))
+               in
+               (name, List.of_seq (StrSet.to_seq free_types)))
+      in
+
+      StrMap.of_seq (List.to_seq free_types)
+
     let rec occurs_check name : Type.kind -> unit t = function
       | KVar name' when name = name' -> fail [ Report.failed_occurs_check name ]
       | KType | KVar _ -> pure ()
@@ -313,6 +348,7 @@ module Kinds = struct
 
   (* Types *)
 
+  (** Infer the kind and type of a type definition *)
   let rec infer_ty : Cst.ty -> (Type.mono * Type.kind) t = function
     | TCon (_, "Int") -> pure (Type.Int, Type.KType)
     | TCon (_, "Bool") -> pure (Type.Bool, Type.KType)
@@ -337,6 +373,7 @@ module Kinds = struct
         let* body_t, body_k = infer_ty body in
         pure (Type.Arrow (param_t, body_t), Type.KArrow (param_k, body_k))
 
+  (** Infer a type definition *)
   let infer_ty_def ((_, name, params, alts) : Cst.ty_def) =
     let ty =
       List.fold_left (fun ty tv -> Type.App (ty, Var tv)) (Type.Con name) params
@@ -383,17 +420,60 @@ module Kinds = struct
 
   (* Bindings *)
 
-  let solve_ty_def (ctx : Ctx.t) ((span, _, _, _) as ty_def : Cst.ty_def) =
-    let open Result.Syntax in
-    let* (name, kind, alts), cs, s = infer_ty_def ty_def ctx 0 in
-    let* subst, _cs, _s = Engine.solve_constraints cs ctx s in
-    let kind = Engine.apply subst kind in
-    Ok ((name, kind, alts), Tast.TyDef { span; name; kind; alts })
+  module StrSCC = SCC.Make (String)
 
-  let solve_types (ctx : Ctx.t) (ty_defs : Cst.ty_def list) =
+  (** Solve a mutually recursive group of type definitions *)
+  let solve_ty_def_group (ty_defs : Cst.ty_def list) =
+    let* fresh_kinds =
+      traverse_list
+        (fun (_, name, _, _) ->
+          let* kind = Engine.fresh_var in
+          pure (name, kind))
+        ty_defs
+    in
+    let new_types = Ctx.of_types_list fresh_kinds in
+    local (Ctx.union new_types)
+      (traverse_list
+         (fun ((span, _, _, _) as ty_def) ->
+           let* name, kind, alts = infer_ty_def ty_def in
+           pure ((name, kind, alts), Tast.TyDef { span; name; kind; alts }))
+         ty_defs)
+
+  (** Solve all type definitions, one strongly connected component at a time *)
+  let solve_ty_defs (ctx : Ctx.t) (ty_defs : Cst.ty_def list) =
     let open Result.Syntax in
-    (* TODO: infer kind of each type *)
-    let* results = Result.accumulate_list (solve_ty_def ctx) ty_defs in
+    let free_types = Engine.get_free_types ctx ty_defs in
+    let scc = StrSCC.(run (make free_types)) in
+    let top_level =
+      StrMap.of_seq
+        (List.to_seq
+           (List.map (fun ((_, name, _, _) as ty) -> (name, ty)) ty_defs))
+    in
+    let groups =
+      List.map (List.map (fun name -> StrMap.find name top_level)) scc
+    in
+    (* TODO: Should we return this? *)
+    let* results, _ctx' =
+      StateResult.accumulate_list
+        (fun group ctx ->
+          let* ty_defs, cs, s = solve_ty_def_group group ctx 0 in
+          let* subst, _cs', _s' = Engine.solve_constraints cs ctx s in
+          let ty_defs =
+            List.map
+              (fun ((n, k, a), Tast.TyDef { span; name; alts; _ }) ->
+                let k = Engine.apply subst k in
+                ((n, k, a), Tast.TyDef { span; name; kind = k; alts }))
+              ty_defs
+          in
+          let ctx' =
+            List.fold_left
+              (fun ctx ((name, kind, _), _) -> Ctx.insert_ty name kind ctx)
+              ctx ty_defs
+          in
+          Ok (ty_defs, ctx'))
+        groups ctx
+    in
+    let results = List.flatten results in
     let new_types, ty_defs = List.unzip results in
     let types =
       Ctx.of_types_list
@@ -402,8 +482,8 @@ module Kinds = struct
     let new_constructors =
       List.map
         (fun (name, _, alts) ->
-          let constructors, _ = List.unzip alts in
-          (name, constructors))
+          let cons, _ = List.unzip alts in
+          (name, cons))
         new_types
     in
     let constructors = Ctx.of_constructors_list new_constructors in
@@ -933,6 +1013,7 @@ module Types = struct
     let top_level =
       StrMap.of_seq
         (List.to_seq
+           (* TODO: Why filter map? *)
            (List.filter_map
               (function
                 | (_, name, _, _) as bind -> Some (name, bind))
@@ -978,7 +1059,7 @@ let module_ (m : Cst.modu) (ctx : Ctx.t) : (Tast.modu, Error.t list) result =
                 (defs, (span, name, vars, alts) :: tys))
           ([], []) bindings
       in
-      let* ctx', types = Kinds.solve_types ctx tys in
+      let* ctx', types = Kinds.solve_ty_defs ctx tys in
       (* TODO: Precedence? *)
       let ctx'' = Ctx.union ctx' ctx in
       let* terms = Types.solve_defs ctx'' defs in

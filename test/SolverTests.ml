@@ -415,6 +415,18 @@ module Mono (S : Solver.S) = struct
                             Arrow (App (Var "t0", Int), App (Con "P", Var "t0"))
                           )) );
                   ]);
+           test_solver "mutually recursive type definition"
+             "module Hello = {
+                 type Expr = EBlock Stmt
+                 type Stmt = SExpr Expr
+               }"
+             (Ctx.of_list
+                ~types:[ ("Expr", Type.(KType)); ("Stmt", Type.(KType)) ]
+                ~terms:
+                  [
+                    ("EBlock", Type.(mono (Arrow (Con "Stmt", Con "Expr"))));
+                    ("SExpr", Type.(mono (Arrow (Con "Expr", Con "Stmt"))));
+                  ]);
            (* Failures *)
            test_failure "let expression out-of-scope"
              "module Hello = { def foo = let x = 1 in x def main = x }"
@@ -550,7 +562,7 @@ module Mono (S : Solver.S) = struct
                   | Nil
                   | Cons a (Int a)
               }"
-             [ [ Text "Cannot solve kind constraint: Type = Type -> k2" ] ];
+             [ [ Text "Cannot solve kind constraint: Type = Type -> k3" ] ];
            test_failure "mismatch kinds in type definition"
              "module Hello = {
                  type P f = MkP (f Int) f

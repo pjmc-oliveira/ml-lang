@@ -1,19 +1,18 @@
 module Hello = {
-  type List a = Nil | Cons a (List a)
-  type Maybe a = None | Some a
 
-  def overlapping = \ls
-    match ls with
-      | Nil -> None
-      | Nil -> None
-      | Cons h t -> None
-      | Cons h t -> Some h
-    end
+  type Expr =
+    | EInt Int
+    | EAdd Expr Expr
+    | EBlock (List Stmt)
 
-  def missing = \ls
-    match ls with
-      | Nil -> None
-    end
+  type Stmt =
+    | SExpr Expr
+    | SLet Int Expr
+
+  type List a =
+    | Nil
+    | Cons a (List a)
 
   def main = 1
+
 }
