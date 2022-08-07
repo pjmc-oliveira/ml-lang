@@ -37,8 +37,7 @@ let string_of_result src r =
 let error_to_lines (e : Error.t) : Error.Line.t list = e.lines
 let errors_to_lines es = List.(map error_to_lines es)
 
-let string_of_result_lines (r : (Solver.ty_ctx, Error.Line.t list list) result)
-    =
+let string_of_result_lines (r : (Ctx.t, Error.Line.t list list) result) =
   match r with
   | Ok ctx -> string_of_ctx ctx
   | Error e ->
@@ -401,6 +400,21 @@ module Mono (S : Solver.S) = struct
                                 App (App (Con "Either", Var "t0"), Var "t1") )
                           )) );
                   ]);
+           test_solver "higher-kinded type definition"
+             "module Hello = {
+                 type P f = MkP (f Int)
+               }"
+             (Ctx.of_list
+                ~types:[ ("P", Type.(KArrow (KArrow (KType, KType), KType))) ]
+                ~terms:
+                  [
+                    ( "MkP",
+                      Type.(
+                        Poly
+                          ( [ "t0" ],
+                            Arrow (App (Var "t0", Int), App (Con "P", Var "t0"))
+                          )) );
+                  ]);
            (* Failures *)
            test_failure "let expression out-of-scope"
              "module Hello = { def foo = let x = 1 in x def main = x }"
@@ -529,26 +543,19 @@ module Mono (S : Solver.S) = struct
                   | Nil
                   | Cons a List
               }"
-             [
-               [
-                 Text "Kind mismatch";
-                 Text "Expected: Type";
-                 Text "But got: Type -> Type";
-               ];
-             ];
+             [ [ Text "Cannot solve kind constraint: Type -> Type = Type" ] ];
            test_failure "Type definition with wrong kind"
              "module Hello = {
                 type List a =
                   | Nil
                   | Cons a (Int a)
               }"
-             [
-               [
-                 Text "Kind mismatch";
-                 Text "Expected kind: Type -> Type";
-                 Text "But got: Type";
-               ];
-             ];
+             [ [ Text "Cannot solve kind constraint: Type = Type -> k2" ] ];
+           test_failure "mismatch kinds in type definition"
+             "module Hello = {
+                 type P f = MkP (f Int) f
+               }"
+             [ [ Text "Cannot solve kind constraint: Type -> Type = Type" ] ];
          ]
 end
 

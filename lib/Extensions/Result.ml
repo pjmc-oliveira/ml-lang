@@ -13,11 +13,25 @@ module Syntax = struct
   let ( and* ) = ( and+ )
 end
 
-let traverse_list (f : 'a -> ('b, 'e) t) (xs : 'a list) : ('b list, 'e) result =
+let traverse_list (f : 'a -> ('b, 'e) t) (xs : 'a list) : ('b list, 'e) t =
   List.fold_right
     (fun x next ->
       match f x with
       | Error e -> Error e
+      | Ok y -> (
+          match next with
+          | Error e -> Error e
+          | Ok ys -> Ok (y :: ys)))
+    xs (Ok [])
+
+let accumulate_list (f : 'a -> ('b, 'e) t) (xs : 'a list) : ('b list, 'e) t =
+  List.fold_right
+    (fun x next ->
+      match f x with
+      | Error e -> (
+          match next with
+          | Error e' -> Error (e @ e')
+          | Ok _ -> Error e)
       | Ok y -> (
           match next with
           | Error e -> Error e

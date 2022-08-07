@@ -3,8 +3,6 @@ module StrMap = Map.Make (String)
 module StrSet = Set.Make (String)
 module StrSCC = SCC.Make (String)
 
-type ty_ctx = Ctx.t
-
 type constraint_ctx =
   (* Mismatched types *)
   | Mismatch of {
@@ -13,104 +11,40 @@ type constraint_ctx =
       message : string;
     }
   (* Unexpected type *)
-  | Unexpected of { got : Type.mono * Source.span; message : string }
-
-type constraints = (Type.mono * Type.mono * constraint_ctx) list
-type subst = (string * Type.mono) list
+  | Unexpected of {
+      got : Type.mono * Source.span;
+      message : string;
+    }
 
 module type S = sig
-  val module_ : Cst.modu -> ty_ctx -> (Tast.modu, Error.t list) result
-  val solve_module : Cst.modu -> ty_ctx -> (ty_ctx, Error.t list) result
-end
-
-(** The type solver Monad *)
-module T = struct
-  type 'a t = ty_ctx -> int -> ('a * constraints * int, Error.t list) result
-
-  (* Monad operations *)
-  let pure (x : 'a) : 'a t = fun _ctx s -> Ok (x, [], s)
-  let fail e : 'a t = fun _ctx _s -> Error e
-
-  let bind (p : 'a t) (f : 'a -> 'b t) : 'b t =
-   fun ctx s ->
-    match p ctx s with
-    | Error e -> Error e
-    | Ok (x, c1, s') -> (
-        match (f x) ctx s' with
-        | Error e -> Error e
-        | Ok (y, c2, s'') -> Ok (y, c1 @ c2, s''))
-
-  let ( let* ) = bind
-
-  (* Writer operations *)
-  let tell c : unit t = fun _ctx s -> Ok ((), c, s)
-
-  (* Reader operations *)
-  let ask : ty_ctx t = fun ctx s -> Ok (ctx, [], s)
-  let local (f : ty_ctx -> ty_ctx) (p : 'a t) : 'a t = fun ctx s -> p (f ctx) s
-
-  (* State operations *)
-  let get : int t = fun _ctx s -> Ok (s, [], s)
-  let set s : unit t = fun _ctx _s -> Ok ((), [], s)
-
-  (* Traversable *)
-  let traverse_list (f : 'a -> 'b t) (xs : 'a list) : 'b list t =
-    List.fold_right
-      (fun x r ctx s ->
-        match f x ctx s with
-        | Error e -> Error e
-        | Ok (y, c1, s') -> (
-            match r ctx s' with
-            | Error e -> Error e
-            | Ok (ys, c2, s'') -> Ok (y :: ys, c1 @ c2, s'')))
-      xs (pure [])
-
-  let accumulate_list (f : 'a -> 'b t) (xs : 'a list) : 'b list t =
-    let rec loop oks errs cs = function
-      | [] ->
-          if errs = [] then
-            let* _ = tell cs in
-            pure (List.rev oks)
-          else
-            fail (List.rev errs)
-      | x :: xs -> (
-          fun ctx st ->
-            match f x ctx st with
-            | Error err -> loop oks (err @ errs) cs xs ctx st
-            | Ok (ok, c, st') -> loop (ok :: oks) errs (c @ cs) xs ctx st')
-    in
-    loop [] [] [] xs
+  val module_ : Cst.modu -> Ctx.t -> (Tast.modu, Error.t list) result
+  val solve_module : Cst.modu -> Ctx.t -> (Ctx.t, Error.t list) result
 end
 
 (** Report errors *)
 module Report = struct
-  open T
-
   let error ?span lines : Error.t =
     { kind = Error.Kind.Solver; location = span; lines }
 
   let unbound_var name span =
-    fail [ error ~span [ Text ("Unbound variable: " ^ name); Quote span ] ]
+    error ~span [ Text ("Unbound variable: " ^ name); Quote span ]
 
   let unbound_constructor name span =
-    fail [ error ~span [ Text ("Unbound constructor: " ^ name); Quote span ] ]
+    error ~span [ Text ("Unbound constructor: " ^ name); Quote span ]
 
   let constructor_arity_mismatch span name expected actual =
-    fail
+    error ~span
       [
-        error ~span
-          [
-            Text ("Arity mismatch for constructor: " ^ name);
-            Quote span;
-            Text ("Expected " ^ string_of_int expected ^ " variable(s)");
-            Text ("But got " ^ string_of_int actual ^ " variable(s)");
-          ];
+        Text ("Arity mismatch for constructor: " ^ name);
+        Quote span;
+        Text ("Expected " ^ string_of_int expected ^ " variable(s)");
+        Text ("But got " ^ string_of_int actual ^ " variable(s)");
       ]
 
   let unbound_type name span =
-    fail [ error ~span [ Text ("Unbound type: " ^ name); Quote span ] ]
+    error ~span [ Text ("Unbound type: " ^ name); Quote span ]
 
-  let cannot_solve_constraint ty ty' constraint_ctx =
+  let cannot_solve_type_constraint ty ty' constraint_ctx =
     let detail =
       match constraint_ctx with
       | Mismatch { left = ty, sp; right = ty', sp'; message } ->
@@ -128,60 +62,52 @@ module Report = struct
             Text message;
           ]
     in
+
     (* TODO: Should substitute constraints *)
-    fail
+    error
+      ([
+         Error.Line.Text
+           ("Cannot solve constraint: "
+           ^ Type.pretty_mono ty
+           ^ " = "
+           ^ Type.pretty_mono ty');
+       ]
+      @ detail)
+
+  let cannot_solve_kind_constraint ki ki' =
+    error
       [
-        error
-          ([
-             Error.Line.Text
-               ("Cannot solve constraint: "
-               ^ Type.pretty_mono ty
-               ^ " = "
-               ^ Type.pretty_mono ty');
-           ]
-          @ detail);
+        Error.Line.Text
+          ("Cannot solve kind constraint: "
+          ^ Type.pretty_kind ki
+          ^ " = "
+          ^ Type.pretty_kind ki');
       ]
 
-  let failed_occurs_check name =
-    fail [ error [ Text ("Failed occurs check: " ^ name) ] ]
+  let failed_occurs_check name = error [ Text ("Failed occurs check: " ^ name) ]
+end
 
-  let kind_mismatch expected actual =
-    fail
-      [
-        error
-          [
-            Text "Kind mismatch";
-            Text ("Expected: " ^ Type.pretty_kind expected);
-            Text ("But got: " ^ Type.pretty_kind actual);
-          ];
-      ]
+module type Monad = sig
+  type 'a t
 
-  let expected_kind_arrow actual =
-    fail
-      [
-        error
-          [
-            Text "Kind mismatch";
-            Text ("Expected kind: " ^ Type.(pretty_kind (KArrow (KType, KType))));
-            Text ("But got: " ^ Type.pretty_kind actual);
-          ];
-      ]
+  val pure : 'a -> 'a t
+  val ( let* ) : 'a t -> ('a -> 'b t) -> 'b t
+  val fail : Error.t list -> 'a t
+  val ask : Ctx.t t
 end
 
 (** Resolve Cst type to Type *)
-module Resolve = struct
-  open T
+module Resolve (M : Monad) = struct
+  open M
 
   let rec ty : Cst.ty -> Type.mono t = function
+    | TCon (_, "Int") -> pure Type.Int
+    | TCon (_, "Bool") -> pure Type.Bool
     | TCon (span, name) -> (
-        match name with
-        | "Int" -> pure Type.Int
-        | "Bool" -> pure Type.Bool
-        | _ -> (
-            let* ctx = ask in
-            match Ctx.lookup_ty name ctx with
-            | None -> Report.unbound_type name span
-            | Some _ -> pure (Type.Con name)))
+        let* ctx = ask in
+        match Ctx.lookup_ty name ctx with
+        | None -> fail [ Report.unbound_type name span ]
+        | Some _ -> pure (Type.Con name))
     | TVar (_, name) -> pure (Type.Var name)
     | TApp (_, func, arg) ->
         let* func = ty func in
@@ -203,47 +129,7 @@ end
 
 (** The core of the type solving functionality *)
 module Core = struct
-  open T
-
-  (** Constrains two types to equal each other *)
-  let constrain ty ty' ?(message = "") (sp, sp') =
-    tell
-      [ (ty, ty', Mismatch { left = (ty, sp); right = (ty', sp'); message }) ]
-
-  let constrain_app fun_t (arg_t, ret_t) ?(message = "") (sp, sp') =
-    tell
-      [
-        ( fun_t,
-          Type.Arrow (arg_t, ret_t),
-          Mismatch { left = (fun_t, sp); right = (arg_t, sp'); message } );
-      ]
-
-  let expect expected actual span message =
-    tell [ (expected, actual, Unexpected { got = (actual, span); message }) ]
-
-  (** Scope a name and type to an operation *)
-  let scope name ty p = local (Ctx.insert name (Type.mono ty)) p
-
-  (** Creates a fresh type variable *)
-  let fresh_var =
-    let* n = get in
-    let tv = "t" ^ string_of_int n in
-    let* _ = set (n + 1) in
-    pure (Type.Var tv)
-
-  (** Checks if a type variable occurs in a given type *)
-  let rec occurs_check (name : string) (ty : Type.mono) : unit t =
-    match ty with
-    | Var name' when name = name' -> Report.failed_occurs_check name
-    | Int | Bool | Var _ | Con _ -> pure ()
-    | App (func, arg) ->
-        let* _ = occurs_check name func in
-        let* _ = occurs_check name arg in
-        pure ()
-    | Arrow (from, to_) ->
-        let* _ = occurs_check name from in
-        let* _ = occurs_check name to_ in
-        pure ()
+  type subst = (string * Type.mono) list
 
   (** Substitutes a type variable for a given type in another type *)
   let rec substitute (old : string) (new_ : Type.mono) (ty : Type.mono) :
@@ -260,49 +146,6 @@ module Core = struct
         let to_ = substitute old new_ to_ in
         Arrow (from, to_)
 
-  (** Substitutes a type variable for a given type in a set of constraints  *)
-  let substitute_constraints (name : string) (ty : Type.mono) (cs : constraints)
-      : constraints =
-    let rewrite = substitute name ty in
-    List.map (fun (l, r, e) -> (rewrite l, rewrite r, e)) cs
-
-  let substitute_constraint_ctx (name : string) (new_ : Type.mono) = function
-    | Mismatch { left = ty, sp; right = ty', sp'; message } ->
-        Mismatch
-          {
-            left = (substitute name new_ ty, sp);
-            right = (substitute name new_ ty', sp');
-            message;
-          }
-    | Unexpected { got = ty', sp'; message } ->
-        Unexpected { got = (substitute name new_ ty', sp'); message }
-
-  (** Solves a set of constraints to set of substitutions to perform *)
-  let rec solve_constraints : constraints -> subst t = function
-    | [] -> pure []
-    | (ty, ty', extra) :: cs -> (
-        match (ty, ty') with
-        | Int, Int | Bool, Bool -> solve_constraints cs
-        | Var tv, Var tv' when tv = tv' -> solve_constraints cs
-        | Con name, Con name' when name = name' -> solve_constraints cs
-        | Var tv, ty | ty, Var tv ->
-            let* _ = occurs_check tv ty in
-            let cs = substitute_constraints tv ty cs in
-            let cs =
-              List.map
-                (fun (ty, ty', c_ctx) ->
-                  let c_ctx = substitute_constraint_ctx tv ty c_ctx in
-                  (ty, ty', c_ctx))
-                cs
-            in
-            let* subs = solve_constraints cs in
-            pure ((tv, ty) :: subs)
-        | App (t1, t2), App (t1', t2') ->
-            solve_constraints ((t1, t1', extra) :: (t2, t2', extra) :: cs)
-        | Arrow (t1, t2), Arrow (t1', t2') ->
-            solve_constraints ((t1, t1', extra) :: (t2, t2', extra) :: cs)
-        | _, _ -> Report.cannot_solve_constraint ty ty' extra)
-
   (** Applies a substitution to a type *)
   let rec apply (ss : subst) (ty : Type.mono) : Type.mono =
     match ss with
@@ -312,95 +155,29 @@ module Core = struct
         | Var name' when name = name' -> apply ss' new_
         | Int | Bool | Var _ | Con _ -> apply ss' ty
         | App (func, arg) ->
-            let func = apply ss func in
-            let arg = apply ss arg in
+            let func = substitute name new_ func in
+            let arg = substitute name new_ arg in
             apply ss' (App (func, arg))
         | Arrow (from, to_) ->
-            let from = apply ss from in
-            let to_ = apply ss to_ in
+            let from = substitute name new_ from in
+            let to_ = substitute name new_ to_ in
             apply ss' (Arrow (from, to_)))
-
-  (** Instantiates a polymorphic type to a monomorphic type *)
-  let instantiate (ty : Type.poly) : Type.mono t =
-    let (Poly (ty_vars, ty)) = ty in
-    let* fresh_vars = traverse_list (fun _ -> fresh_var) ty_vars in
-    let s = List.zip ty_vars fresh_vars in
-    pure (apply s ty)
-
-  (** Gets the free type variables of a type *)
-  let rec free_ty_vars : Type.mono -> StrSet.t = function
-    | Type.Int | Type.Bool | Type.Con _ -> StrSet.empty
-    | Type.Var name -> StrSet.singleton name
-    | App (func, arg) ->
-        let func = free_ty_vars func in
-        let arg = free_ty_vars arg in
-        StrSet.union func arg
-    | Type.Arrow (from, to_) ->
-        let from = free_ty_vars from in
-        let to_ = free_ty_vars to_ in
-        StrSet.union from to_
-
-  (** Gets the free variables of an expression *)
-  let rec free_vars : Cst.expr -> StrSet.t = function
-    | ELit _ -> StrSet.empty
-    | EVar (_, name) -> StrSet.singleton name
-    | ELet (_, name, _, def, body) ->
-        let def_vars = free_vars def in
-        let body_vars = free_vars body in
-        StrSet.(filter (fun v -> not (v = name)) (union def_vars body_vars))
-    | EIf (_, cond, con, alt) ->
-        let cond_vars = free_vars cond in
-        let con_vars = free_vars con in
-        let alt_vars = free_vars alt in
-        StrSet.(union cond_vars (union con_vars alt_vars))
-    | ELam (_, param, _, body) ->
-        let body_vars = free_vars body in
-        StrSet.filter (fun v -> not (v = param)) body_vars
-    | EApp (_, func, arg) ->
-        let func_vars = free_vars func in
-        let arg_vars = free_vars arg in
-        StrSet.union func_vars arg_vars
-    | EAnn (_, expr, _) -> free_vars expr
-    | EMatch (_, expr, alts) ->
-        let expr_vars = free_vars expr in
-        let alts_vars =
-          List.fold_left
-            (fun s ((Cst.PCon (_, vars), _), case) ->
-              let vars = List.map (fun (v, _) -> v) vars in
-              let case = free_vars case in
-              let alt_vars =
-                List.fold_left (fun s v -> StrSet.remove v s) case vars
-              in
-              StrSet.union s alt_vars)
-            StrSet.empty alts
-        in
-        StrSet.union expr_vars alts_vars
-
-  (** Gets the free terms of an expression, removing terms in the ctx *)
-  let get_free_terms (ctx : ty_ctx) (defs : Cst.tm_def list) =
-    let free_terms =
-      List.map
-        (function
-          | _, name, _, expr -> (name, free_vars expr))
-        defs
-    in
-    let list_of_set s = List.of_seq (StrSet.to_seq s) in
-    let free_terms =
-      List.map
-        (fun (name, vars) ->
-          ( name,
-            List.filter
-              (fun v ->
-                match Ctx.lookup v ctx with
-                | None -> true
-                | Some _ -> false)
-              (list_of_set vars) ))
-        free_terms
-    in
-    StrMap.of_seq (List.to_seq free_terms)
 
   (** Generalizes a monomorphic type to a polymorphic type *)
   let generalize (ty : Type.mono) : Type.poly =
+    (* Gets the free type variables of a type *)
+    let rec free_ty_vars : Type.mono -> StrSet.t = function
+      | Type.Int | Type.Bool | Type.Con _ -> StrSet.empty
+      | Type.Var name -> StrSet.singleton name
+      | App (func, arg) ->
+          let func = free_ty_vars func in
+          let arg = free_ty_vars arg in
+          StrSet.union func arg
+      | Type.Arrow (from, to_) ->
+          let from = free_ty_vars from in
+          let to_ = free_ty_vars to_ in
+          StrSet.union from to_
+    in
     let ty_vars = List.of_seq (StrSet.to_seq (free_ty_vars ty)) in
     Type.Poly (ty_vars, ty)
 
@@ -418,64 +195,443 @@ module Core = struct
     (subst, Type.Poly (new_ty_vars, apply subst ty))
 end
 
-module KindEngine = struct
-  open T
+(** Infer kinds of types *)
+module Kinds = struct
+  type constraints = (Type.kind * Type.kind) list
+  type subst = (string * Type.kind) list
 
-  let rec check_kind : Type.mono -> Type.kind t = function
-    | Int | Bool -> pure Type.KType
-    | Var _ -> (* TODO: Is this always true? *) pure Type.KType
-    | Con name -> (
+  module M = struct
+    type 'a t = Ctx.t -> int -> ('a * constraints * int, Error.t list) result
+
+    let pure x : 'a t = fun _ctx st -> Ok (x, [], st)
+
+    let bind (t : 'a t) (f : 'a -> 'b t) : 'b t =
+     fun ctx st ->
+      match t ctx st with
+      | Error e -> Error e
+      | Ok (x, cs, st') -> (
+          match (f x) ctx st' with
+          | Error e -> Error e
+          | Ok (y, cs', st'') -> Ok (y, cs @ cs', st''))
+
+    let ( let* ) = bind
+    let fail e : 'a t = fun _ctx _st -> Error e
+    let ask : Ctx.t t = fun ctx st -> Ok (ctx, [], st)
+    let local (f : Ctx.t -> Ctx.t) (p : 'a t) : 'a t = fun ctx -> p (f ctx)
+    let tell c : unit t = fun _ctx s -> Ok ((), c, s)
+    let get : int t = fun _ctx s -> Ok (s, [], s)
+    let set s : unit t = fun _ctx _s -> Ok ((), [], s)
+
+    let traverse_list (f : 'a -> 'b t) (xs : 'a list) : 'b list t =
+      List.fold_right
+        (fun x r ctx s ->
+          match f x ctx s with
+          | Error e -> Error e
+          | Ok (y, c1, s') -> (
+              match r ctx s' with
+              | Error e -> Error e
+              | Ok (ys, c2, s'') -> Ok (y :: ys, c1 @ c2, s'')))
+        xs (pure [])
+
+    let accumulate_list (f : 'a -> 'b t) (xs : 'a list) : 'b list t =
+      let rec loop oks errs cs = function
+        | [] ->
+            if errs = [] then
+              let* _ = tell cs in
+              pure (List.rev oks)
+            else
+              fail (List.rev errs)
+        | x :: xs -> (
+            fun ctx st ->
+              match f x ctx st with
+              | Error err -> loop oks (err @ errs) cs xs ctx st
+              | Ok (ok, c, st') -> loop (ok :: oks) errs (c @ cs) xs ctx st')
+      in
+      loop [] [] [] xs
+  end
+
+  module Resolve = Resolve (M)
+
+  module Engine = struct
+    open M
+
+    let constrain ki ki' = tell [ (ki, ki') ]
+
+    let fresh_var : Type.kind t =
+      let* n = get in
+      let kind = Type.KVar ("k" ^ string_of_int n) in
+      let* _ = set (n + 1) in
+      pure kind
+
+    let rec occurs_check name : Type.kind -> unit t = function
+      | KVar name' when name = name' -> fail [ Report.failed_occurs_check name ]
+      | KType | KVar _ -> pure ()
+      | KArrow (func, arg) ->
+          let* _ = occurs_check name func in
+          let* _ = occurs_check name arg in
+          pure ()
+
+    let rec substitute name new_ : Type.kind -> Type.kind = function
+      | KVar name' when name' = name -> new_
+      | (KType | KVar _) as kind -> kind
+      | KArrow (func, arg) ->
+          let func = substitute name new_ func in
+          let arg = substitute name new_ arg in
+          KArrow (func, arg)
+
+    let substitute_constraints name new_ (cs : constraints) =
+      let rewrite = substitute name new_ in
+      List.map (fun (l, r) -> (rewrite l, rewrite r)) cs
+
+    let rec solve_constraints : constraints -> subst t = function
+      | [] -> pure []
+      | (KType, KType) :: cs -> solve_constraints cs
+      | (KVar name, KVar name') :: cs when name = name' -> solve_constraints cs
+      | (KVar kv, ki) :: cs | (ki, KVar kv) :: cs ->
+          let* _ = occurs_check kv ki in
+          let cs = substitute_constraints kv ki cs in
+          let* subs = solve_constraints cs in
+          pure ((kv, ki) :: subs)
+      | (KArrow (k1, k2), KArrow (k1', k2')) :: cs ->
+          solve_constraints ((k1, k1') :: (k2, k2') :: cs)
+      | (ki, ki') :: _ -> fail [ Report.cannot_solve_kind_constraint ki ki' ]
+
+    let rec apply (ss : subst) (old : Type.kind) : Type.kind =
+      match ss with
+      | [] -> old
+      | (name, new_) :: ss' -> (
+          match old with
+          | KVar name' when name = name' -> apply ss' new_
+          | KType | KVar _ -> apply ss' old
+          | KArrow (func, arg) ->
+              let func' = substitute name new_ func in
+              let arg' = substitute name new_ arg in
+              apply ss' (Type.KArrow (func', arg')))
+  end
+
+  open M
+
+  (* Types *)
+
+  let rec infer_ty : Cst.ty -> (Type.mono * Type.kind) t = function
+    | TCon (_, "Int") -> pure (Type.Int, Type.KType)
+    | TCon (_, "Bool") -> pure (Type.Bool, Type.KType)
+    | TCon (span, name) -> (
         let* ctx = ask in
         match Ctx.lookup_ty name ctx with
-        | None -> failwith ""
-        | Some kind -> pure kind)
-    | App (func, arg) -> (
-        let* func = check_kind func in
-        let* arg = check_kind arg in
-        match func with
-        | KArrow (param, body) when arg = param -> pure body
-        | _ -> Report.expected_kind_arrow func)
-    | Arrow (param, body) ->
-        let* param = check_kind param in
-        let* body = check_kind body in
-        pure (Type.KArrow (param, body))
+        | None -> fail [ Report.unbound_type name span ]
+        | Some kind -> pure (Type.Con name, kind))
+    | TVar (span, name) -> (
+        let* ctx = ask in
+        match Ctx.lookup_ty name ctx with
+        | None -> fail [ Report.unbound_type name span ]
+        | Some kind -> pure (Type.Var name, kind))
+    | TApp (_, func, arg) ->
+        let* out_k = Engine.fresh_var in
+        let* func_t, func_k = infer_ty func in
+        let* arg_t, arg_k = infer_ty arg in
+        let* _ = Engine.constrain func_k (KArrow (arg_k, out_k)) in
+        pure (Type.App (func_t, arg_t), out_k)
+    | TArr (_, param, body) ->
+        let* param_t, param_k = infer_ty param in
+        let* body_t, body_k = infer_ty body in
+        pure (Type.Arrow (param_t, body_t), Type.KArrow (param_k, body_k))
 
-  (* infer types of constructors *)
-  let infer_constructor (ty : Type.mono) (alts : Cst.alt list) =
-    accumulate_list
-      (fun (con, tys) ->
-        let* tys = accumulate_list Resolve.ty tys in
-        let* _ =
-          traverse_list
-            (fun ty ->
-              let* kind = check_kind ty in
-              if kind = Type.KType then
-                pure ()
-              else
-                Report.kind_mismatch Type.KType kind)
-            tys
-        in
-        let con_t = List.fold_right (fun l r -> Type.Arrow (l, r)) tys ty in
-        (* TODO: Should this be normalized here? or later? *)
-        let _, scheme = Core.normalize_scheme (Core.generalize con_t) in
-        pure (con, scheme))
-      alts
-
-  (* infer kinds of types *)
-  let infer_kind ((_, name, vars, alts) : Cst.ty_def) =
-    let kind =
-      List.fold_left (fun kind _ -> Type.KArrow (KType, kind)) Type.KType vars
-    in
+  let infer_ty_def ((_, name, params, alts) : Cst.ty_def) =
     let ty =
-      List.fold_left (fun ty tv -> Type.App (ty, Var tv)) (Type.Con name) vars
+      List.fold_left (fun ty tv -> Type.App (ty, Var tv)) (Type.Con name) params
     in
-    let* alts = local (Ctx.insert_ty name kind) (infer_constructor ty alts) in
-    pure (name, kind, alts)
+    let* ctx = ask in
+    let* fresh_kinds =
+      traverse_list
+        (fun param ->
+          let* kind = Engine.fresh_var in
+          pure (param, kind))
+        params
+    in
+    let* kind = Engine.fresh_var in
+    let _, kinds = List.unzip fresh_kinds in
+    let syntax_kind =
+      List.fold_left
+        (fun kind fresh -> Type.KArrow (fresh, kind))
+        Type.KType kinds
+    in
+    let* _ = Engine.constrain kind syntax_kind in
+    let ctx' = Ctx.(union ctx (of_types_list fresh_kinds)) in
+    let* constructors =
+      local
+        (fun _ -> Ctx.insert_ty name kind ctx')
+        (accumulate_list
+           (fun (con, tys) ->
+             let* types_kinds =
+               traverse_list
+                 (fun ty ->
+                   let* ty, kind = infer_ty ty in
+                   let* _ = Engine.constrain kind KType in
+                   pure (ty, kind))
+                 tys
+             in
+             let types, _ = List.unzip types_kinds in
+             let con_t =
+               List.fold_right (fun l r -> Type.Arrow (l, r)) types ty
+             in
+             let _, scheme = Core.normalize_scheme (Core.generalize con_t) in
+             pure (con, scheme))
+           alts)
+    in
+    pure (name, kind, constructors)
+
+  (* Bindings *)
+
+  let solve_ty_def (ctx : Ctx.t) ((span, _, _, _) as ty_def : Cst.ty_def) =
+    let open Result.Syntax in
+    let* (name, kind, alts), cs, s = infer_ty_def ty_def ctx 0 in
+    let* subst, _cs, _s = Engine.solve_constraints cs ctx s in
+    let kind = Engine.apply subst kind in
+    Ok ((name, kind, alts), Tast.TyDef { span; name; kind; alts })
+
+  let solve_types (ctx : Ctx.t) (ty_defs : Cst.ty_def list) =
+    let open Result.Syntax in
+    (* TODO: infer kind of each type *)
+    let* results = Result.accumulate_list (solve_ty_def ctx) ty_defs in
+    let new_types, ty_defs = List.unzip results in
+    let types =
+      Ctx.of_types_list
+        (List.map (fun (name, kind, _) -> (name, kind)) new_types)
+    in
+    let new_constructors =
+      List.map
+        (fun (name, _, alts) ->
+          let constructors, _ = List.unzip alts in
+          (name, constructors))
+        new_types
+    in
+    let constructors = Ctx.of_constructors_list new_constructors in
+    let constructors_of_ty_def (TyDef { alts; _ } : Tast.ty_def) = alts in
+    let constructors_terms =
+      Ctx.of_terms_list (List.flatten (List.map constructors_of_ty_def ty_defs))
+    in
+    Ok (Ctx.(union types (union constructors constructors_terms)), ty_defs)
 end
 
-(** The engine that drives the Core  *)
-module TyEngine = struct
-  open T
+(** Infer types  *)
+module Types = struct
+  type constraints = (Type.mono * Type.mono * constraint_ctx) list
+  type subst = (string * Type.mono) list
+
+  (** The type solver Monad *)
+  module M = struct
+    type 'a t = Ctx.t -> int -> ('a * constraints * int, Error.t list) result
+
+    (* Monad operations *)
+    let pure (x : 'a) : 'a t = fun _ctx s -> Ok (x, [], s)
+    let fail e : 'a t = fun _ctx _s -> Error e
+
+    let bind (p : 'a t) (f : 'a -> 'b t) : 'b t =
+     fun ctx s ->
+      match p ctx s with
+      | Error e -> Error e
+      | Ok (x, c1, s') -> (
+          match (f x) ctx s' with
+          | Error e -> Error e
+          | Ok (y, c2, s'') -> Ok (y, c1 @ c2, s''))
+
+    let ( let* ) = bind
+
+    (* Writer operations *)
+    let tell c : unit t = fun _ctx s -> Ok ((), c, s)
+
+    (* Reader operations *)
+    let ask : Ctx.t t = fun ctx s -> Ok (ctx, [], s)
+    let local (f : Ctx.t -> Ctx.t) (p : 'a t) : 'a t = fun ctx s -> p (f ctx) s
+
+    (* State operations *)
+    let get : int t = fun _ctx s -> Ok (s, [], s)
+    let set s : unit t = fun _ctx _s -> Ok ((), [], s)
+
+    (* Traversable *)
+    let traverse_list (f : 'a -> 'b t) (xs : 'a list) : 'b list t =
+      List.fold_right
+        (fun x r ctx s ->
+          match f x ctx s with
+          | Error e -> Error e
+          | Ok (y, c1, s') -> (
+              match r ctx s' with
+              | Error e -> Error e
+              | Ok (ys, c2, s'') -> Ok (y :: ys, c1 @ c2, s'')))
+        xs (pure [])
+
+    let accumulate_list (f : 'a -> 'b t) (xs : 'a list) : 'b list t =
+      let rec loop oks errs cs = function
+        | [] ->
+            if errs = [] then
+              let* _ = tell cs in
+              pure (List.rev oks)
+            else
+              fail (List.rev errs)
+        | x :: xs -> (
+            fun ctx st ->
+              match f x ctx st with
+              | Error err -> loop oks (err @ errs) cs xs ctx st
+              | Ok (ok, c, st') -> loop (ok :: oks) errs (c @ cs) xs ctx st')
+      in
+      loop [] [] [] xs
+  end
+
+  module Resolve = Resolve (M)
+
+  (** The engine of the type solving functionality *)
+  module Engine = struct
+    open M
+
+    (** Constrains two types to equal each other *)
+    let constrain ty ty' ?(message = "") (sp, sp') =
+      tell
+        [ (ty, ty', Mismatch { left = (ty, sp); right = (ty', sp'); message }) ]
+
+    let constrain_app fun_t (arg_t, ret_t) ?(message = "") (sp, sp') =
+      tell
+        [
+          ( fun_t,
+            Type.Arrow (arg_t, ret_t),
+            Mismatch { left = (fun_t, sp); right = (arg_t, sp'); message } );
+        ]
+
+    let expect expected actual span message =
+      tell [ (expected, actual, Unexpected { got = (actual, span); message }) ]
+
+    (** Scope a name and type to an operation *)
+    let scope name ty p = local (Ctx.insert name (Type.mono ty)) p
+
+    (** Creates a fresh type variable *)
+    let fresh_var =
+      let* n = get in
+      let tv = "t" ^ string_of_int n in
+      let* _ = set (n + 1) in
+      pure (Type.Var tv)
+
+    (** Checks if a type variable occurs in a given type *)
+    let rec occurs_check (name : string) (ty : Type.mono) : unit t =
+      match ty with
+      | Var name' when name = name' -> fail [ Report.failed_occurs_check name ]
+      | Int | Bool | Var _ | Con _ -> pure ()
+      | App (func, arg) ->
+          let* _ = occurs_check name func in
+          let* _ = occurs_check name arg in
+          pure ()
+      | Arrow (from, to_) ->
+          let* _ = occurs_check name from in
+          let* _ = occurs_check name to_ in
+          pure ()
+
+    (** Substitutes a type variable for a given type in a set of constraints  *)
+    let substitute_constraints (name : string) (ty : Type.mono)
+        (cs : constraints) : constraints =
+      let rewrite = Core.substitute name ty in
+      List.map (fun (l, r, e) -> (rewrite l, rewrite r, e)) cs
+
+    let substitute_constraint_ctx (name : string) (new_ : Type.mono) = function
+      | Mismatch { left = ty, sp; right = ty', sp'; message } ->
+          Mismatch
+            {
+              left = (Core.substitute name new_ ty, sp);
+              right = (Core.substitute name new_ ty', sp');
+              message;
+            }
+      | Unexpected { got = ty', sp'; message } ->
+          Unexpected { got = (Core.substitute name new_ ty', sp'); message }
+
+    (** Solves a set of constraints to set of substitutions to perform *)
+    let rec solve_constraints : constraints -> subst t = function
+      | [] -> pure []
+      | (ty, ty', extra) :: cs -> (
+          match (ty, ty') with
+          | Int, Int | Bool, Bool -> solve_constraints cs
+          | Var tv, Var tv' when tv = tv' -> solve_constraints cs
+          | Con name, Con name' when name = name' -> solve_constraints cs
+          | Var tv, ty | ty, Var tv ->
+              let* _ = occurs_check tv ty in
+              let cs = substitute_constraints tv ty cs in
+              let cs =
+                List.map
+                  (fun (ty, ty', c_ctx) ->
+                    let c_ctx = substitute_constraint_ctx tv ty c_ctx in
+                    (ty, ty', c_ctx))
+                  cs
+              in
+              let* subs = solve_constraints cs in
+              pure ((tv, ty) :: subs)
+          | App (t1, t2), App (t1', t2') ->
+              solve_constraints ((t1, t1', extra) :: (t2, t2', extra) :: cs)
+          | Arrow (t1, t2), Arrow (t1', t2') ->
+              solve_constraints ((t1, t1', extra) :: (t2, t2', extra) :: cs)
+          | _, _ -> fail [ Report.cannot_solve_type_constraint ty ty' extra ])
+
+    (** Instantiates a polymorphic type to a monomorphic type *)
+    let instantiate (ty : Type.poly) : Type.mono t =
+      let (Poly (ty_vars, ty)) = ty in
+      let* fresh_vars = traverse_list (fun _ -> fresh_var) ty_vars in
+      let s = List.zip ty_vars fresh_vars in
+      pure (Core.apply s ty)
+
+    (** Gets the free variables of an expression *)
+    let rec free_vars : Cst.expr -> StrSet.t = function
+      | ELit _ -> StrSet.empty
+      | EVar (_, name) -> StrSet.singleton name
+      | ELet (_, name, _, def, body) ->
+          let def_vars = free_vars def in
+          let body_vars = free_vars body in
+          StrSet.(filter (fun v -> not (v = name)) (union def_vars body_vars))
+      | EIf (_, cond, con, alt) ->
+          let cond_vars = free_vars cond in
+          let con_vars = free_vars con in
+          let alt_vars = free_vars alt in
+          StrSet.(union cond_vars (union con_vars alt_vars))
+      | ELam (_, param, _, body) ->
+          let body_vars = free_vars body in
+          StrSet.filter (fun v -> not (v = param)) body_vars
+      | EApp (_, func, arg) ->
+          let func_vars = free_vars func in
+          let arg_vars = free_vars arg in
+          StrSet.union func_vars arg_vars
+      | EAnn (_, expr, _) -> free_vars expr
+      | EMatch (_, expr, alts) ->
+          let expr_vars = free_vars expr in
+          let alts_vars =
+            List.fold_left
+              (fun s ((Cst.PCon (_, vars), _), case) ->
+                let vars = List.map (fun (v, _) -> v) vars in
+                let case = free_vars case in
+                let alt_vars =
+                  List.fold_left (fun s v -> StrSet.remove v s) case vars
+                in
+                StrSet.union s alt_vars)
+              StrSet.empty alts
+          in
+          StrSet.union expr_vars alts_vars
+
+    (** Gets the free terms of an expression, removing terms in the ctx *)
+    let get_free_terms (ctx : Ctx.t) (defs : Cst.tm_def list) =
+      let free_terms =
+        List.map (fun (_, name, _, expr) -> (name, free_vars expr)) defs
+      in
+      let list_of_set s = List.of_seq (StrSet.to_seq s) in
+      let free_terms =
+        List.map
+          (fun (name, vars) ->
+            ( name,
+              List.filter
+                (fun v ->
+                  match Ctx.lookup v ctx with
+                  | None -> true
+                  | Some _ -> false)
+                (list_of_set vars) ))
+          free_terms
+      in
+      StrMap.of_seq (List.to_seq free_terms)
+  end
+
+  open M
   open Tast
 
   (** Returns a typed AST with its associated type *)
@@ -483,76 +639,92 @@ module TyEngine = struct
     let ty = Tast.type_of_expr expr in
     pure (ty, expr)
 
+  (* Expressions *)
+
   (** Infers the type of an expression *)
   let rec infer : Cst.expr -> (Type.mono * Tast.expr) t = function
     | ELit (span, Int value) -> with_type (ELit (Int, span, Int value))
     | ELit (span, Bool value) -> with_type (ELit (Bool, span, Bool value))
-    | EVar (span, name) -> (
-        let* ctx = ask in
-        match Ctx.lookup name ctx with
-        | None -> Report.unbound_var name span
-        | Some ty ->
-            let* ty = Core.instantiate ty in
-            with_type (EVar (ty, span, name)))
-    | ELet (span, name, ann, def, body) ->
-        let* expr_t = Option.fold ~none:Core.fresh_var ~some:Resolve.ty ann in
-        Core.scope name expr_t
-          (let* def_t, def = infer def in
-           Core.scope name def_t
-             (let* body_t, body = infer body in
-              let* _ = Core.constrain expr_t def_t (span, Tast.get_span def) in
-              with_type (ELet (body_t, span, name, def, body))))
-    | EIf (span, cond, con, alt) ->
-        let* cond_t, cond = infer cond in
-        let* _ =
-          Core.expect Bool cond_t
-            (Tast.get_span cond (* TODO: Fix this *))
-            "But if-condition must be Bool"
-        in
-        let* con_t, con = infer con in
-        let* alt_t, alt = infer alt in
-        let* _ =
-          Core.constrain con_t alt_t
-            ~message:"If branches must have the same type"
-            (Tast.get_span con, Tast.get_span alt)
-        in
-        with_type (EIf (con_t, span, cond, con, alt))
-    | ELam (span, param, ann, body) ->
-        let* param_t = Option.fold ~none:Core.fresh_var ~some:Resolve.ty ann in
-        Core.scope param param_t
-          (let* body_t, body = infer body in
-           with_type (ELam (param_t, body_t, span, param, body)))
-    | EApp (span, func, arg) ->
-        let* out_t = Core.fresh_var in
-        let* func_t, func = infer func in
-        let* arg_t, arg = infer arg in
-        let* _ =
-          Core.constrain_app func_t (arg_t, out_t)
-            (Tast.get_span func, Tast.get_span arg (* TODO: Fix this *))
-        in
-        with_type (EApp (out_t, span, func, arg))
-    | EAnn (_, expr, ann) ->
-        let* ann_t = Resolve.ty ann in
-        let* expr_t, expr = infer expr in
-        let* _ =
-          Core.constrain expr_t ann_t (Tast.get_span expr, Cst.span_of_ty ann)
-        in
-        with_type expr
-    | EMatch (span, expr, alts) ->
-        let* expr_t, expr = infer expr in
-        (* TODO: Make use of hd/tl safe.
-                 We only parse match-expressions with at least one alternative,
-                 but it would be better to avoid potential exceptions. *)
-        let ((_, case_expr) as alt), alts = (List.hd alts, List.tl alts) in
-        let* alt_t, alt = infer_first_alt ~expr_t ~expr alt in
-        let* alts =
-          traverse_list
-            (infer_alt ~expr_t ~expr ~body_t:alt_t
-               ~span:(Cst.span_of_expr case_expr))
-            alts
-        in
-        let _, alts = List.unzip alts in
-        with_type (EMatch (alt_t, span, expr, alt :: alts))
+    | EVar (span, name) -> infer_var span name
+    | ELet (span, name, ann, def, body) -> infer_let span name ann def body
+    | EIf (span, cond, con, alt) -> infer_if span cond con alt
+    | ELam (span, param, ann, body) -> infer_lam span param ann body
+    | EApp (span, func, arg) -> infer_app span func arg
+    | EAnn (_, expr, ann) -> infer_ann expr ann
+    | EMatch (span, expr, alts) -> infer_match span expr alts
+
+  and infer_var span name =
+    let* ctx = ask in
+    match Ctx.lookup name ctx with
+    | None -> fail [ Report.unbound_var name span ]
+    | Some ty ->
+        let* ty = Engine.instantiate ty in
+        with_type (EVar (ty, span, name))
+
+  and infer_let span name ann def body =
+    let* expr_t = Option.fold ~none:Engine.fresh_var ~some:Resolve.ty ann in
+    Engine.scope name expr_t
+      (let* def_t, def = infer def in
+       Engine.scope name def_t
+         (let* body_t, body = infer body in
+          let* _ = Engine.constrain expr_t def_t (span, Tast.get_span def) in
+          with_type (ELet (body_t, span, name, def, body))))
+
+  and infer_if span cond con alt =
+    let* cond_t, cond = infer cond in
+    let* _ =
+      Engine.expect Bool cond_t
+        (Tast.get_span cond (* TODO: Fix this *))
+        "But if-condition must be Bool"
+    in
+    let* con_t, con = infer con in
+    let* alt_t, alt = infer alt in
+    let* _ =
+      Engine.constrain con_t alt_t
+        ~message:"If branches must have the same type"
+        (Tast.get_span con, Tast.get_span alt)
+    in
+    with_type (EIf (con_t, span, cond, con, alt))
+
+  and infer_lam span param ann body =
+    let* param_t = Option.fold ~none:Engine.fresh_var ~some:Resolve.ty ann in
+    Engine.scope param param_t
+      (let* body_t, body = infer body in
+       with_type (ELam (param_t, body_t, span, param, body)))
+
+  and infer_app span func arg =
+    let* out_t = Engine.fresh_var in
+    let* func_t, func = infer func in
+    let* arg_t, arg = infer arg in
+    let* _ =
+      Engine.constrain_app func_t (arg_t, out_t)
+        (Tast.get_span func, Tast.get_span arg (* TODO: Fix this *))
+    in
+    with_type (EApp (out_t, span, func, arg))
+
+  and infer_ann expr ann =
+    let* ann_t = Resolve.ty ann in
+    let* expr_t, expr = infer expr in
+    let* _ =
+      Engine.constrain expr_t ann_t (Tast.get_span expr, Cst.span_of_ty ann)
+    in
+    with_type expr
+
+  and infer_match span expr alts =
+    let* expr_t, expr = infer expr in
+    (* TODO: Make use of hd/tl safe.
+             We only parse match-expressions with at least one alternative,
+             but it would be better to avoid potential exceptions. *)
+    let ((_, case_expr) as alt), alts = (List.hd alts, List.tl alts) in
+    let* alt_t, alt = infer_first_alt ~expr_t ~expr alt in
+    let* alts =
+      traverse_list
+        (infer_alt ~expr_t ~expr ~body_t:alt_t
+           ~span:(Cst.span_of_expr case_expr))
+        alts
+    in
+    let _, alts = List.unzip alts in
+    with_type (EMatch (alt_t, span, expr, alt :: alts))
 
   (* TODO: clean up infer_first_alt/infer_alt *)
   and infer_first_alt ~expr_t ~expr
@@ -560,15 +732,21 @@ module TyEngine = struct
     let* ctx = ask in
     let vars, _var_spans = List.unzip spanned_vars in
     match Ctx.lookup head ctx with
-    | None -> Report.unbound_constructor head h_span
+    | None -> fail [ Report.unbound_constructor head h_span ]
     | Some scheme ->
-        let* ty = Core.instantiate scheme in
+        let* ty = Engine.instantiate scheme in
         let arity = Type.get_arity ty in
         if not (arity = List.length vars) then
-          Report.constructor_arity_mismatch p_span head arity (List.length vars)
+          fail
+            [
+              Report.constructor_arity_mismatch p_span head arity
+                (List.length vars);
+            ]
         else
           let head_t = Type.final_type ty in
-          let* _ = Core.constrain expr_t head_t (Tast.get_span expr, h_span) in
+          let* _ =
+            Engine.constrain expr_t head_t (Tast.get_span expr, h_span)
+          in
           let ctx' =
             Ctx.of_terms_list
               (List.zip vars (List.map Type.mono (Type.split_arrow ty)))
@@ -583,229 +761,210 @@ module TyEngine = struct
     let* ctx = ask in
     let vars, _var_spans = List.unzip spanned_vars in
     match Ctx.lookup head ctx with
-    | None -> Report.unbound_constructor head h_span
+    | None -> fail [ Report.unbound_constructor head h_span ]
     | Some scheme ->
-        let* ty = Core.instantiate scheme in
+        let* ty = Engine.instantiate scheme in
         let arity = Type.get_arity ty in
         if not (arity = List.length vars) then
-          Report.constructor_arity_mismatch p_span head arity (List.length vars)
+          fail
+            [
+              Report.constructor_arity_mismatch p_span head arity
+                (List.length vars);
+            ]
         else
           let head_t = Type.final_type ty in
-          let* _ = Core.constrain expr_t head_t (Tast.get_span expr, h_span) in
+          let* _ =
+            Engine.constrain expr_t head_t (Tast.get_span expr, h_span)
+          in
           let ctx' =
             Ctx.of_terms_list
               (List.zip vars (List.map Type.mono (Type.split_arrow ty)))
           in
           local (Ctx.union ctx')
             (let* case_t, case = infer case in
-             let* _ = Core.constrain body_t case_t (span, Tast.get_span case) in
+             let* _ =
+               Engine.constrain body_t case_t (span, Tast.get_span case)
+             in
              pure (case_t, (Tast.PCon (head, vars), case)))
+
+  (* Secondary checks *)
+
+  (** Check if match is exhaustive *)
+  let check_match_exhaustiveness ctx :
+      Tast.expr -> (Tast.expr, Error.t list) result =
+    let not_exhaustive span missing_cons =
+      {
+        Error.kind = Solver;
+        location = Some span;
+        lines =
+          [
+            Text "Match not exhaustive";
+            Quote span;
+            Text ("Missing patterns: " ^ String.concat ", " missing_cons);
+          ];
+      }
+    in
+    let overlapping_patterns span overlaps =
+      {
+        Error.kind = Solver;
+        location = Some span;
+        lines =
+          [
+            Text ("Overlapping patterns: " ^ String.concat ", " overlaps);
+            Quote span;
+          ];
+      }
+    in
+    Tast.fold_expr_result
+      (let open Result.Syntax in
+      function
+      | EMatchF (_, span, expr, alts) as e ->
+          let ty = Tast.type_of_expr expr in
+          (* TODO: Sort out error message *)
+          let* ty_con = Option.to_result ~none:[] (Type.get_con ty) in
+          let* cons =
+            (* TODO: Sort out error message *)
+            Option.to_result ~none:[] (Ctx.lookup_constructors ty_con ctx)
+          in
+          let pats, _ = List.unzip alts in
+          let heads = List.map (fun (Tast.PCon (head, _)) -> head) pats in
+          let missing_cons =
+            List.filter (fun con -> not (List.mem con heads)) cons
+          in
+          if List.length missing_cons > 0 then
+            Error [ not_exhaustive span missing_cons ]
+          else
+            let duplicate_heads =
+              List.fold_left
+                (fun m h ->
+                  StrMap.add h
+                    (Option.fold ~none:1
+                       ~some:(fun n -> n + 1)
+                       (StrMap.find_opt h m))
+                    m)
+                StrMap.empty heads
+              |> StrMap.to_seq
+              |> List.of_seq
+              |> List.filter (fun (_, n) -> n > 1)
+              |> List.map (fun (h, _) -> h)
+            in
+            if List.length heads > List.length cons then
+              Error [ overlapping_patterns span duplicate_heads ]
+            else
+              Ok (Tast.expr_f_to_expr e)
+      | e -> Ok (Tast.expr_f_to_expr e))
+
+  (* Bindings *)
+
+  (** Infers the type of a single binding *)
+  let infer_def (def : Cst.tm_def) : Tast.tm_def t =
+    let* ctx = ask in
+    let make_constr name ty sp sp' =
+      match Ctx.lookup name ctx with
+      | None -> pure ()
+      | Some scheme ->
+          let* ty' = Engine.instantiate scheme in
+          Engine.constrain ty ty' (sp, sp')
+    in
+    match def with
+    | span, name, None, expr ->
+        let* expr_t, expr = infer expr in
+        let* _ = make_constr name expr_t (Tast.get_span expr) span in
+        let scheme = Core.generalize expr_t in
+        pure (Tast.TmDef { scheme; span; name; expr })
+    | span, name, Some ann, expr ->
+        let* ann_t = Resolve.scheme ann in
+        let ann_t = Type.get_mono_type ann_t in
+        let* expr_t, expr = infer expr in
+        let* _ =
+          Engine.constrain ann_t expr_t
+            (span (* TODO: Fix this *), Tast.get_span expr)
+        in
+        let* _ = make_constr name expr_t (Tast.get_span expr) span in
+        let scheme = Core.generalize expr_t in
+        pure (Tast.TmDef { scheme; span; name; expr })
+
+  (** Infers the types of a bind group *)
+  let infer_defs (defs : Cst.tm_def list) : Tast.tm_def list t =
+    let* top_level =
+      defs
+      |> traverse_list (function _, name, ann, _ ->
+             (match ann with
+             | None ->
+                 let* ty = Engine.fresh_var in
+                 pure (name, Type.mono ty)
+             | Some ann ->
+                 let* ty = Resolve.scheme ann in
+                 pure (name, ty)))
+    in
+    let top_level = Ctx.of_terms_list top_level in
+    local (Ctx.union top_level) (accumulate_list infer_def defs)
+
+  (** Solves the types of a bind group *)
+  let solve_def_group (ctx : Ctx.t) (defs : Cst.tm_def list) =
+    let open Result.Syntax in
+    match infer_defs defs ctx 0 with
+    | Error es -> Error es
+    | Ok (defs, cs, s) -> (
+        match Engine.solve_constraints cs ctx s with
+        | Error es -> Error es
+        | Ok (subst, _, _s') ->
+            Result.traverse_list
+              (function
+                | Tast.TmDef { scheme; span; name; expr } ->
+                    let scheme =
+                      scheme
+                      |> Type.get_mono_type
+                      |> Core.apply subst
+                      |> Core.generalize
+                    in
+                    (* Substitute type, then normalize scheme *)
+                    let expr = Tast.map_type (Core.apply subst) expr in
+                    let subst', scheme = Core.normalize_scheme scheme in
+                    let expr = Tast.map_type (Core.apply subst') expr in
+                    let* expr = check_match_exhaustiveness ctx expr in
+                    Ok (Tast.TmDef { scheme; span; name; expr }))
+              defs)
+
+  (** Solves all bindings one strongly connected component at a time *)
+  let solve_defs (ctx : Ctx.t) (defs : Cst.tm_def list) =
+    let free_terms = Engine.get_free_terms ctx defs in
+    let scc = StrSCC.(run (make free_terms)) in
+    let top_level =
+      StrMap.of_seq
+        (List.to_seq
+           (List.filter_map
+              (function
+                | (_, name, _, _) as bind -> Some (name, bind))
+              defs))
+    in
+    let groups =
+      List.map
+        (List.filter_map (fun name -> StrMap.find_opt name top_level))
+        scc
+    in
+    let result =
+      StateResult.accumulate_list
+        (fun bs ctx ->
+          match solve_def_group ctx bs with
+          | Error e -> Error e
+          | Ok bs' ->
+              let new_ctx =
+                List.fold_left
+                  (fun ctx (Tast.TmDef { scheme; name; _ } : Tast.tm_def) ->
+                    Ctx.insert name scheme ctx)
+                  ctx bs'
+              in
+              Ok (bs', new_ctx))
+        groups ctx
+    in
+    match result with
+    | Error e -> Error e
+    | Ok (bind_bind, _s) -> Ok (List.flatten bind_bind)
 end
 
-(* Terms *)
-
-let check_match_exhaustiveness ctx :
-    Tast.expr -> (Tast.expr, Error.t list) result =
-  let not_exhaustive span missing_cons =
-    {
-      Error.kind = Solver;
-      location = Some span;
-      lines =
-        [
-          Text "Match not exhaustive";
-          Quote span;
-          Text ("Missing patterns: " ^ String.concat ", " missing_cons);
-        ];
-    }
-  in
-  let overlapping_patterns span overlaps =
-    {
-      Error.kind = Solver;
-      location = Some span;
-      lines =
-        [
-          Text ("Overlapping patterns: " ^ String.concat ", " overlaps);
-          Quote span;
-        ];
-    }
-  in
-  Tast.fold_expr_result
-    (let open Result.Syntax in
-    function
-    | EMatchF (_, span, expr, alts) as e ->
-        let ty = Tast.type_of_expr expr in
-        (* TODO: Sort out error message *)
-        let* ty_con = Option.to_result ~none:[] (Type.get_con ty) in
-        let* cons =
-          (* TODO: Sort out error message *)
-          Option.to_result ~none:[] (Ctx.lookup_constructors ty_con ctx)
-        in
-        let pats, _ = List.unzip alts in
-        let heads = List.map (fun (Tast.PCon (head, _)) -> head) pats in
-        let missing_cons =
-          List.filter (fun con -> not (List.mem con heads)) cons
-        in
-        if List.length missing_cons > 0 then
-          Error [ not_exhaustive span missing_cons ]
-        else
-          let duplicate_heads =
-            List.fold_left
-              (fun m h ->
-                StrMap.add h
-                  (Option.fold ~none:1
-                     ~some:(fun n -> n + 1)
-                     (StrMap.find_opt h m))
-                  m)
-              StrMap.empty heads
-            |> StrMap.to_seq
-            |> List.of_seq
-            |> List.filter (fun (_, n) -> n > 1)
-            |> List.map (fun (h, _) -> h)
-          in
-          if List.length heads > List.length cons then
-            Error [ overlapping_patterns span duplicate_heads ]
-          else
-            Ok (Tast.expr_f_to_expr e)
-    | e -> Ok (Tast.expr_f_to_expr e))
-
-(** Infers the type of a single binding *)
-let infer_def (def : Cst.tm_def) : Tast.tm_def T.t =
-  let open T in
-  let* ctx = ask in
-  let make_constr name ty sp sp' =
-    match Ctx.lookup name ctx with
-    | None -> pure ()
-    | Some scheme ->
-        let* ty' = Core.instantiate scheme in
-        Core.constrain ty ty' (sp, sp')
-  in
-  match def with
-  | span, name, None, expr ->
-      let* expr_t, expr = TyEngine.infer expr in
-      let* _ = make_constr name expr_t (Tast.get_span expr) span in
-      let scheme = Core.generalize expr_t in
-      pure (Tast.TmDef { scheme; span; name; expr })
-  | span, name, Some ann, expr ->
-      let* ann_t = Resolve.scheme ann in
-      let ann_t = Type.get_mono_type ann_t in
-      let* expr_t, expr = TyEngine.infer expr in
-      let* _ =
-        Core.constrain ann_t expr_t
-          (span (* TODO: Fix this *), Tast.get_span expr)
-      in
-      let* _ = make_constr name expr_t (Tast.get_span expr) span in
-      let scheme = Core.generalize expr_t in
-      pure (Tast.TmDef { scheme; span; name; expr })
-
-(** Infers the types of a bind group *)
-let infer_defs (defs : Cst.tm_def list) : Tast.tm_def list T.t =
-  let open T in
-  let* top_level =
-    defs
-    |> traverse_list (function _, name, ann, _ ->
-           (match ann with
-           | None ->
-               let* ty = Core.fresh_var in
-               pure (name, Type.mono ty)
-           | Some ann ->
-               let* ty = Resolve.scheme ann in
-               pure (name, ty)))
-  in
-  let top_level = Ctx.of_terms_list top_level in
-  local (Ctx.union top_level) (accumulate_list infer_def defs)
-
-(** Solves the types of a bind group *)
-let solve_def_group (ctx : ty_ctx) (defs : Cst.tm_def list) =
-  let open Result.Syntax in
-  match infer_defs defs ctx 0 with
-  | Error es -> Error es
-  | Ok (defs, cs, s) -> (
-      match Core.solve_constraints cs ctx s with
-      | Error es -> Error es
-      | Ok (subst, _, _s') ->
-          Result.traverse_list
-            (function
-              | Tast.TmDef { scheme; span; name; expr } ->
-                  let scheme =
-                    scheme
-                    |> Type.get_mono_type
-                    |> Core.apply subst
-                    |> Core.generalize
-                  in
-                  (* Substitute type, then normalize scheme *)
-                  let expr = Tast.map_type (Core.apply subst) expr in
-                  let subst', scheme = Core.normalize_scheme scheme in
-                  let expr = Tast.map_type (Core.apply subst') expr in
-                  let* expr = check_match_exhaustiveness ctx expr in
-                  Ok (Tast.TmDef { scheme; span; name; expr }))
-            defs)
-
-(** Solves all bindings one strongly connected component at a time *)
-let solve_defs (ctx : ty_ctx) (defs : Cst.tm_def list) =
-  let free_terms = Core.get_free_terms ctx defs in
-  let scc = StrSCC.(run (make free_terms)) in
-  let top_level =
-    StrMap.of_seq
-      (List.to_seq
-         (List.filter_map
-            (function
-              | (_, name, _, _) as bind -> Some (name, bind))
-            defs))
-  in
-  let groups =
-    List.map (List.filter_map (fun name -> StrMap.find_opt name top_level)) scc
-  in
-  let result =
-    StateResult.accumulate_list
-      (fun bs ctx ->
-        match solve_def_group ctx bs with
-        | Error e -> Error e
-        | Ok bs' ->
-            let new_ctx =
-              List.fold_left
-                (fun ctx (Tast.TmDef { scheme; name; _ } : Tast.tm_def) ->
-                  Ctx.insert name scheme ctx)
-                ctx bs'
-            in
-            Ok (bs', new_ctx))
-      groups ctx
-  in
-  match result with
-  | Error e -> Error e
-  | Ok (bind_bind, _s) -> Ok (List.flatten bind_bind)
-
-(* Types *)
-
-let solve_types (ty_defs : Cst.ty_def list) =
-  let open T in
-  (* TODO: infer kind of each type *)
-  let* results =
-    accumulate_list
-      (fun ((span, _, _, _) as ty_def) ->
-        let* name, kind, alts = KindEngine.infer_kind ty_def in
-        pure ((name, kind, alts), Tast.TyDef { span; name; kind; alts }))
-      ty_defs
-  in
-  let new_types, ty_defs = List.unzip results in
-  let types =
-    Ctx.of_types_list (List.map (fun (name, kind, _) -> (name, kind)) new_types)
-  in
-  let new_constructors =
-    List.map
-      (fun (name, _, alts) ->
-        let constructors, _ = List.unzip alts in
-        (name, constructors))
-      new_types
-  in
-  let constructors = Ctx.of_constructors_list new_constructors in
-  let constructors_of_ty_def (TyDef { alts; _ } : Tast.ty_def) = alts in
-  let constructors_terms =
-    Ctx.of_terms_list (List.flatten (List.map constructors_of_ty_def ty_defs))
-  in
-  pure (Ctx.(union types (union constructors constructors_terms)), ty_defs)
-
 (** Infers the type of a module *)
-let module_ (m : Cst.modu) (ctx : ty_ctx) : (Tast.modu, Error.t list) result =
+let module_ (m : Cst.modu) (ctx : Ctx.t) : (Tast.modu, Error.t list) result =
   let open Result.Syntax in
   match m with
   | Module (span, name, bindings) ->
@@ -819,14 +978,14 @@ let module_ (m : Cst.modu) (ctx : ty_ctx) : (Tast.modu, Error.t list) result =
                 (defs, (span, name, vars, alts) :: tys))
           ([], []) bindings
       in
-      let* (ctx', types), _c, _s = solve_types tys ctx 0 in
+      let* ctx', types = Kinds.solve_types ctx tys in
       (* TODO: Precedence? *)
       let ctx'' = Ctx.union ctx' ctx in
-      let* terms = solve_defs ctx'' defs in
+      let* terms = Types.solve_defs ctx'' defs in
       Ok (Tast.Module { span; name; terms; types })
 
 (** Solves the type of a module *)
-let solve_module (m : Cst.modu) (ctx : ty_ctx) : (ty_ctx, Error.t list) result =
+let solve_module (m : Cst.modu) (ctx : Ctx.t) : (Ctx.t, Error.t list) result =
   let open Result.Syntax in
   let insert_term_to_ctx ctx (name, ty) = Ctx.insert name ty ctx in
   let insert_type_to_ctx ctx (name, kind) = Ctx.insert_ty name kind ctx in

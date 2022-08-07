@@ -1,4 +1,8 @@
-type kind = KType | KArrow of kind * kind [@@deriving show]
+type kind =
+  | KType
+  | KVar of string
+  | KArrow of kind * kind
+[@@deriving show]
 
 type mono =
   | Int
@@ -13,6 +17,7 @@ type poly = Poly of string list * mono [@@deriving show]
 
 let rec pretty_kind = function
   | KType -> "Type"
+  | KVar name -> name
   | KArrow ((KArrow _ as param), body) ->
       "(" ^ pretty_kind param ^ ") -> " ^ pretty_kind body
   | KArrow (param, body) -> pretty_kind param ^ " -> " ^ pretty_kind body
@@ -27,6 +32,12 @@ let rec pretty_mono = function
   | Arrow ((Arrow _ as inp), out) ->
       "(" ^ pretty_mono inp ^ ") -> " ^ pretty_mono out
   | Arrow (inp, out) -> pretty_mono inp ^ " -> " ^ pretty_mono out
+
+let pretty_poly (Poly (tvars, ty)) =
+  let quantifier =
+    if tvars = [] then "" else "forall " ^ String.concat " " tvars ^ ". "
+  in
+  quantifier ^ pretty_mono ty
 
 let get_mono_type = function
   | Poly (_, ty) -> ty
