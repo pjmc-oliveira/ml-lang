@@ -3,7 +3,9 @@ module Combinator = struct
   type errors = Error.t list
 
   module Consumed = struct
-    type t = Consumed | Unconsumed
+    type t =
+      | Consumed
+      | Unconsumed
 
     let both l r =
       match l with
@@ -321,18 +323,25 @@ and annotation () =
        ])
 
 and application () =
-  with_span
-    (let* func = atom () in
-     let* args = many (atom ()) in
-     let expr =
-       List.fold_left
-         (fun func arg span ->
-           let func = func span in
-           Cst.EApp (span, func, arg))
-         (fun _ -> func)
-         args
-     in
-     pure expr)
+  let* expr =
+    with_span
+      (let* func = atom () in
+       let* args = many (atom ()) in
+       let expr =
+         List.fold_left
+           (fun func arg span ->
+             let func = func span in
+             Cst.EApp (span, func, arg))
+           (fun _ -> func)
+           args
+       in
+       pure expr)
+  in
+  (* Allow for a dangling lambda as last expression *)
+  let* block = optional (lambda ()) in
+  match block with
+  | None -> pure expr
+  | Some block -> with_span (pure (fun span -> Cst.EApp (span, expr, block)))
 
 and atom () =
   with_span

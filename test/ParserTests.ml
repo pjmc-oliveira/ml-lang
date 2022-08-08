@@ -299,6 +299,23 @@ let ast_tests =
                     ("Cons", [ TVar "a"; TApp (TCon "List", TVar "a") ]);
                   ] );
             ] ));
+    test_parser_ast "dangling lambda syntax"
+      "module Hello = {
+        def main =
+          bind tx \\x
+          pure x
+      }"
+      Ast.(
+        Module
+          ( "Hello",
+            [
+              Def
+                ( None,
+                  "main",
+                  EApp
+                    ( EApp (EVar "bind", EVar "tx"),
+                      ELam ("x", None, EApp (EVar "pure", EVar "x")) ) );
+            ] ));
     test_parser_ast "line comments"
       "-- start comment
       module Hello = {
