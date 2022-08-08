@@ -57,9 +57,9 @@ let rec eval (e : Tast.expr) (env : tm_env) : (Value.t, Error.t) result =
       | Closure { env = closure_ctx; param; body } ->
           let closure_ctx' = define param arg' closure_ctx in
           eval body closure_ctx'
-      | Con { head; tail } ->
+      | Con { head; arity; tail } ->
           (* TODO: there has to be a better way to deal with constructors *)
-          Ok (Con { head; tail = tail @ [ arg' ] })
+          Ok (Con { head; arity; tail = tail @ [ arg' ] })
       | Native func ->
           (* Defer to create a thunk value from the ast
              then force to pass it into the native function *)
@@ -73,7 +73,7 @@ let rec eval (e : Tast.expr) (env : tm_env) : (Value.t, Error.t) result =
       let* expr = eval expr env in
       let* expr = whnf expr in
       match expr with
-      | Con { head; tail } -> (
+      | Con { head; tail; _ } -> (
           match
             List.find_opt (fun (Tast.PCon (name, _), _) -> name = head) alts
           with
@@ -95,7 +95,7 @@ and whnf (v : Value.t) : (Value.t, Error.t) result =
   match v with
   | Int n -> Ok (Value.Int n)
   | Bool b -> Ok (Value.Bool b)
-  | Con { head; tail } -> Ok (Value.Con { head; tail })
+  | Con { head; arity; tail } -> Ok (Value.Con { head; arity; tail })
   | Closure f -> Ok (Value.Closure f)
   | Thunk { env; expr } ->
       let* expr = eval expr env in
@@ -113,9 +113,9 @@ and force (v : Value.t) : (Value.t, Error.t) result =
   match v with
   | Int n -> Ok (Value.Int n)
   | Bool b -> Ok (Value.Bool b)
-  | Con { head; tail } ->
+  | Con { head; arity; tail } ->
       let* tail = Result.traverse_list force tail in
-      Ok (Value.Con { head; tail })
+      Ok (Value.Con { head; arity; tail })
   | Closure f -> Ok (Value.Closure f)
   | Thunk { env; expr } ->
       let* expr = eval expr env in
@@ -147,8 +147,9 @@ let defer_term_def (tm_def : Tast.tm_def) (env : tm_env) :
 let find_entrypoint entrypoint tm_defs : Tast.tm_def option =
   List.find_opt (fun (Tast.TmDef { name; _ }) -> name = entrypoint) tm_defs
 
-let make_type_constructor ((head, _tys) : string * Type.poly) =
-  Value.Con { head; tail = [] }
+let make_type_constructor ((head, tys) : string * Type.poly) =
+  let arity = Type.get_arity (Type.get_mono_type tys) in
+  Value.Con { head; arity; tail = [] }
 
 let add_type_constructors (TyDef { alts; _ } : Tast.ty_def) (env : tm_env) :
     tm_env =
