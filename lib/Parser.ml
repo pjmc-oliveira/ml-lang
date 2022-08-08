@@ -24,9 +24,7 @@ module Combinator = struct
     match p (tks, None) with
     | _, Error errs -> Error errs
     | _, Ok (x, ([], _)) -> Ok x
-    | _, Ok (x, _) ->
-        print_string "Warning: Unconsumed input\n";
-        Ok x
+    | _, Ok (_, _) -> failwith "Warning: Unconsumed input\n"
 
   let map f (p : 'a t) : 'b t =
    fun s ->
