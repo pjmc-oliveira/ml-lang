@@ -20,10 +20,10 @@ module Combinator = struct
   let error ?location lines : Error.t = { kind = Parser; lines; location }
   let fail_lines ?location lines = fail [ error ?location lines ]
 
-  let parse (p : 'a t) tks : ('a, errors) result =
+  let parse (p : 'a t) tks : 'a option * errors =
     match p (tks, None) with
-    | _, Error errs -> Error errs
-    | _, Ok (x, ([], _)) -> Ok x
+    | _, Error errs -> (None, errs)
+    | _, Ok (x, ([], _)) -> (Some x, [])
     | _, Ok (_, _) -> failwith "Warning: Unconsumed input\n"
 
   let map f (p : 'a t) : 'b t =

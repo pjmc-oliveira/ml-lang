@@ -3,15 +3,28 @@ open Ml_lang
 open Extensions
 open Result.Syntax
 
+module W = WriterOption.Make (struct
+  type t = Error.t list
+
+  let empty = []
+  let concat = ( @ )
+end)
+
 let interpret_module ?(entrypoint = "main") ?(tm_ctx = Env.empty)
     ?(ty_ctx = Ctx.empty) str =
-  let src = Source.of_string str in
-  let* tks = Lexer.tokens src in
-  let* m = Parser.(parse module_ tks) in
-  let* m = Solver.module_ m ty_ctx in
-  (* let* m = HindleyMilner.module_ m ty_ctx in *)
-  let* value = Interpreter.run ~entrypoint ~context:tm_ctx m in
-  Ok value
+  let m, e =
+    let open W.Syntax in
+    let src = Source.of_string str in
+    let* tks = Lexer.tokens src in
+    let* m = Parser.(parse module_ tks) in
+    let* m = Solver.module_ m ty_ctx in
+    W.pure m
+  in
+  match m with
+  | Some m ->
+      let* value = Interpreter.run ~entrypoint ~context:tm_ctx m in
+      Ok value
+  | None -> Error e
 
 let string_of_result src r =
   match r with

@@ -17,8 +17,8 @@ type constraint_ctx =
     }
 
 module type S = sig
-  val module_ : Cst.modu -> Ctx.t -> (Tast.modu, Error.t list) result
-  val solve_module : Cst.modu -> Ctx.t -> (Ctx.t, Error.t list) result
+  val module_ : Cst.modu -> Ctx.t -> Tast.modu option * Error.t list
+  val solve_module : Cst.modu -> Ctx.t -> Ctx.t option * Error.t list
 end
 
 (** Report errors *)
@@ -1182,3 +1182,13 @@ let solve_module (m : Cst.modu) (ctx : Ctx.t) : (Ctx.t, Error.t list) result =
       let ctx = List.fold_left insert_term_to_ctx ctx (tms @ constructors) in
       let ctx = List.fold_left insert_type_to_ctx ctx tys in
       Ok ctx
+
+let module_ (m : Cst.modu) (ctx : Ctx.t) : Tast.modu option * Error.t list =
+  match module_ m ctx with
+  | Ok m -> (Some m, [])
+  | Error e -> (None, e)
+
+let solve_module (m : Cst.modu) (ctx : Ctx.t) : Ctx.t option * Error.t list =
+  match solve_module m ctx with
+  | Ok ctx -> (Some ctx, [])
+  | Error errs -> (None, errs)

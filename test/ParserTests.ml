@@ -1,33 +1,43 @@
 open OUnit2
 open Ml_lang
 open Extensions
-open Result.Syntax
+
+module W = WriterOption.Make (struct
+  type t = Error.t list
+
+  let empty = []
+  let concat = ( @ )
+end)
+
+open W.Syntax
 
 let parse_module str =
   let src = Source.of_string str in
   let* tks = Lexer.tokens src in
   let* m = Parser.(parse module_ tks) in
-  Ok m
+  W.pure m
 
-let string_of_cst_result src r =
+let string_of_cst_result src (r, e) =
+  (* TODO: Print errors if present *)
   match r with
-  | Ok m -> "Ok " ^ Cst.show_modu m
-  | Error e -> "Error " ^ String.concat "\n" (List.map (Error.to_string src) e)
+  | Some m -> "Some " ^ Cst.show_modu m
+  | None -> "None " ^ String.concat "\n" (List.map (Error.to_string src) e)
 
 let test_parser_cst label str cst =
   label >:: fun _ ->
-  assert_equal (Ok cst) (parse_module str)
+  assert_equal (Some cst, []) (parse_module str)
     ~printer:(string_of_cst_result (Source.of_string str))
 
-let string_of_ast_result src r =
+let string_of_ast_result src (r, e) =
+  (* TODO: Print errors if present *)
   match r with
-  | Ok m -> "Ok " ^ Ast.show_modu m
-  | Error e -> "Error " ^ String.concat "\n" (List.map (Error.to_string src) e)
+  | Some m -> "Ok " ^ Ast.show_modu m
+  | None -> "Error " ^ String.concat "\n" (List.map (Error.to_string src) e)
 
 let test_parser_ast label str ast =
   label >:: fun _ ->
-  assert_equal (Ok ast)
-    (Result.map Cst.to_ast (parse_module str))
+  assert_equal (Some ast, [])
+    (W.map Cst.to_ast (parse_module str))
     ~printer:(string_of_ast_result (Source.of_string str))
 
 let cst_tests =

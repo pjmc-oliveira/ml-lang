@@ -1,7 +1,6 @@
 open OUnit2
 open Ml_lang
 open Extensions
-open Result.Syntax
 
 (* TODO: pretty print *)
 let string_of_ctx ctx =
@@ -28,41 +27,50 @@ let string_of_ctx ctx =
   ^ "\n\t]\n"
   ^ "\n}"
 
-let string_of_result src r =
+let string_of_result src (r, e) =
   match r with
-  | Ok ctx -> string_of_ctx ctx
-  | Error e ->
+  | Some ctx -> string_of_ctx ctx
+  | None ->
       "Error [" ^ String.concat "\n" (List.map (Error.to_string src) e) ^ "]"
 
 let error_to_lines (e : Error.t) : Error.Line.t list = e.lines
 let errors_to_lines es = List.(map error_to_lines es)
 
-let string_of_result_lines (r : (Ctx.t, Error.Line.t list list) result) =
+let string_of_result_lines ((r, e) : Ctx.t option * Error.Line.t list list) =
   match r with
-  | Ok ctx -> string_of_ctx ctx
-  | Error e ->
+  | Some ctx -> string_of_ctx ctx
+  | None ->
       let lines = List.map (List.map Error.Line.show) e in
       let lines = List.map (String.concat "; ") lines in
       "Error [" ^ String.concat "\n" lines ^ "]"
 
-let ty_ctx_equal l r =
+let ty_ctx_equal (l, e) (r, e') =
   match (l, r) with
-  | Ok l, Ok r -> Ctx.tm_equal ( = ) l r && Ctx.ty_equal ( = ) l r
-  | _, _ -> l = r
+  | Some l, Some r -> Ctx.tm_equal ( = ) l r && Ctx.ty_equal ( = ) l r
+  | _, _ -> e = e'
 
-let ty_ctx_equal_weak l r =
+let ty_ctx_equal_weak (l, _e) (r, _e') =
   match (l, r) with
-  | Ok l, Ok r -> Ctx.tm_equal ( = ) l r && Ctx.ty_equal ( = ) l r
-  | Error _, Error _ -> true
+  | Some l, Some r -> Ctx.tm_equal ( = ) l r && Ctx.ty_equal ( = ) l r
+  | None, None -> true
   | _, _ -> false
 
 module Tester (S : Solver.S) = struct
+  module W = WriterOption.Make (struct
+    type t = Error.t list
+
+    let empty = []
+    let concat = ( @ )
+  end)
+
+  open W.Syntax
+
   let solve_module str ctx =
     let src = Source.of_string str in
     let* tks = Lexer.tokens src in
     let* m = Parser.(parse module_ tks) in
     let* ctx = S.solve_module m ctx in
-    Ok ctx
+    W.pure ctx
 
   let test_solver label str ?(skip = false) ?(initial_ctx = Ctx.empty)
       (expected_ctx : Ctx.t) =
@@ -70,7 +78,7 @@ module Tester (S : Solver.S) = struct
     skip_if skip "Skipped test";
     assert_equal
       ~printer:(string_of_result (Source.of_string str))
-      ~cmp:ty_ctx_equal (Ok expected_ctx)
+      ~cmp:ty_ctx_equal (Some expected_ctx, [])
       (solve_module str initial_ctx)
 
   let test_failure label str ?(skip = false) ?(initial_ctx = Ctx.empty)
@@ -81,8 +89,8 @@ module Tester (S : Solver.S) = struct
     assert_equal ~printer:string_of_result_lines ~cmp:ty_ctx_equal
       (* TODO: Revert this to strong equality *)
       (* ~cmp:ty_ctx_equal_weak *)
-      (Error expected_lines)
-      (Result.map_error errors_to_lines result)
+      (None, expected_lines)
+      ((fun (x, e) -> (x, errors_to_lines e)) result)
 end
 
 module Mono (S : Solver.S) = struct
