@@ -16,11 +16,6 @@ type constraint_ctx =
       message : string;
     }
 
-module type S = sig
-  val module_ : Cst.modu -> Ctx.t -> Tast.modu option * Error.t list
-  val solve_module : Cst.modu -> Ctx.t -> Ctx.t option * Error.t list
-end
-
 (** Report errors *)
 module Report = struct
   let error ?span lines : Error.t =
