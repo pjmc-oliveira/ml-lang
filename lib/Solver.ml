@@ -802,13 +802,22 @@ module Types = struct
         with_type (EVar (ty, span, name))
 
   and infer_let span name ann def body =
+    let free_vars = Engine.free_vars def in
     let* expr_t = Option.fold ~none:Engine.fresh_var ~some:Resolve.ty ann in
-    Engine.scope name expr_t
-      (let* def_t, def = infer def in
-       Engine.scope name def_t
-         (let* body_t, body = infer body in
-          let* _ = Engine.constrain expr_t def_t (span, Tast.get_span def) in
-          with_type (ELet (body_t, span, name, def, body))))
+    (* Only create recursive "let" if "name" is present in "def"  *)
+    if StrSet.mem name free_vars then
+      Engine.scope name expr_t
+        (let* def_t, def = infer def in
+         Engine.scope name def_t
+           (let* body_t, body = infer body in
+            let* _ = Engine.constrain expr_t def_t (span, Tast.get_span def) in
+            with_type (ELetRec (body_t, span, name, def, body))))
+    else
+      let* def_t, def = infer def in
+      Engine.scope name def_t
+        (let* body_t, body = infer body in
+         let* _ = Engine.constrain expr_t def_t (span, Tast.get_span def) in
+         with_type (ELet (body_t, span, name, def, body)))
 
   and infer_if span cond con alt =
     let* cond_t, cond = infer cond in

@@ -37,6 +37,10 @@ let rec eval (e : Tast.expr) (env : tm_env) : (Value.t, Error.t) result =
   | ELit (_, _, Bool value) -> Ok (Value.Bool value)
   | EVar (_, span, name) -> lookup span name env
   | ELet (_, _, name, def, body) ->
+      let thunk = defer def env in
+      let env' = define name thunk env in
+      eval body env'
+  | ELetRec (_, _, name, def, body) ->
       let fixpoint = fix name def env in
       let env' = define name fixpoint env in
       eval body env'

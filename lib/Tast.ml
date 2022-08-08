@@ -1,12 +1,17 @@
 open Extensions
 
-type lit = Int of int | Bool of bool [@@deriving show]
+type lit =
+  | Int of int
+  | Bool of bool
+[@@deriving show]
+
 type pat = PCon of string * string list [@@deriving show]
 
 type expr =
   | ELit of Type.mono * Source.Span.t * lit
   | EVar of Type.mono * Source.Span.t * string
   | ELet of Type.mono * Source.Span.t * string * expr * expr
+  | ELetRec of Type.mono * Source.Span.t * string * expr * expr
   | EIf of Type.mono * Source.Span.t * expr * expr * expr
   (* Type of [param] to [body] *)
   | ELam of Type.mono * Type.mono * Source.Span.t * string * expr
@@ -18,6 +23,7 @@ type 'a expr_f =
   | ELitF of Type.mono * Source.Span.t * lit
   | EVarF of Type.mono * Source.Span.t * string
   | ELetF of Type.mono * Source.Span.t * string * 'a * 'a
+  | ELetRecF of Type.mono * Source.Span.t * string * 'a * 'a
   | EIfF of Type.mono * Source.Span.t * 'a * 'a * 'a
   | ELamF of Type.mono * Type.mono * Source.Span.t * string * 'a
   | EAppF of Type.mono * Source.Span.t * 'a * 'a
@@ -56,6 +62,7 @@ let type_of_expr (e : expr) : Type.mono =
   | ELit (ty, _, _) -> ty
   | EVar (ty, _, _) -> ty
   | ELet (ty, _, _, _, _) -> ty
+  | ELetRec (ty, _, _, _, _) -> ty
   | EIf (ty, _, _, _, _) -> ty
   | ELam (param_t, body_t, _, _, _) -> Type.Arrow (param_t, body_t)
   | EApp (ty, _, _, _) -> ty
@@ -66,6 +73,8 @@ let rec map_type (f : Type.mono -> Type.mono) : expr -> expr = function
   | EVar (ty, span, name) -> EVar (f ty, span, name)
   | ELet (ty, span, name, def, body) ->
       ELet (f ty, span, name, map_type f def, map_type f body)
+  | ELetRec (ty, span, name, def, body) ->
+      ELetRec (f ty, span, name, map_type f def, map_type f body)
   | EIf (ty, span, cond, con, alt) ->
       EIf (f ty, span, map_type f cond, map_type f con, map_type f alt)
   | ELam (param_t, body_t, span, param, body) ->
@@ -83,6 +92,7 @@ let get_span = function
   | ELit (_, sp, _) -> sp
   | EVar (_, sp, _) -> sp
   | ELet (_, sp, _, _, _) -> sp
+  | ELetRec (_, sp, _, _, _) -> sp
   | EIf (_, sp, _, _, _) -> sp
   | ELam (_, _, sp, _, _) -> sp
   | EApp (_, sp, _, _) -> sp
@@ -92,6 +102,7 @@ let expr_f_to_expr : expr expr_f -> expr = function
   | ELitF (ty, sp, lit) -> ELit (ty, sp, lit)
   | EVarF (ty, sp, name) -> EVar (ty, sp, name)
   | ELetF (ty, sp, name, def, body) -> ELet (ty, sp, name, def, body)
+  | ELetRecF (ty, sp, name, def, body) -> ELetRec (ty, sp, name, def, body)
   | EIfF (ty, sp, cond, con, alt) -> EIf (ty, sp, cond, con, alt)
   | ELamF (param_t, body_t, sp, param, body) ->
       ELam (param_t, body_t, sp, param, body)
@@ -108,6 +119,10 @@ let rec fold_expr_result (f : 'a expr_f -> ('a, 'e) result) :
       let* def = fold_expr_result f def in
       let* body = fold_expr_result f body in
       f (ELetF (ty, sp, name, def, body))
+  | ELetRec (ty, sp, name, def, body) ->
+      let* def = fold_expr_result f def in
+      let* body = fold_expr_result f body in
+      f (ELetRecF (ty, sp, name, def, body))
   | EIf (ty, sp, cond, con, alt) ->
       let* cond = fold_expr_result f cond in
       let* con = fold_expr_result f con in
