@@ -428,6 +428,54 @@ module Mono (S : Solver.S) = struct
                     ("SExpr", Type.(mono (Arrow (Con "Expr", Con "Stmt"))));
                   ]);
            (* Failures *)
+           test_failure "disallow duplicate top-level definitions"
+             "module Hello = {
+                def x = 1
+                def x = 2
+              }"
+             [
+               [
+                 Text "Duplicate definitions of: x";
+                 Quote { index = 33; line = 2; column = 17; length = 9 };
+                 Quote { index = 59; line = 3; column = 17; length = 9 };
+               ];
+             ];
+           test_failure "disallow duplicate type definitions"
+             "module Hello = {
+                type X = X1
+                type X = X2
+              }"
+             [
+               [
+                 Text "Duplicate definitions of: X";
+                 Quote { index = 33; line = 2; column = 17; length = 11 };
+                 Quote { index = 61; line = 3; column = 17; length = 11 };
+               ];
+             ];
+           test_failure
+             "disallow duplicate constructor definitions in different types"
+             "module Hello = {
+                type X = Z
+                type Y = Z
+              }"
+             [
+               [
+                 Text "Duplicate definitions of: Z";
+                 Quote { index = 33; line = 2; column = 17; length = 10 };
+                 Quote { index = 60; line = 3; column = 17; length = 10 };
+               ];
+             ];
+           test_failure
+             "disallow duplicate constructor definitions in same type"
+             "module Hello = {
+                type X = Z | Z
+              }"
+             [
+               [
+                 Text "Duplicate definitions of: Z";
+                 Quote { index = 33; line = 2; column = 17; length = 14 };
+               ];
+             ];
            test_failure "let expression out-of-scope"
              "module Hello = { def foo = let x = 1 in x def main = x }"
              [

@@ -77,7 +77,7 @@ module Report = struct
   let cannot_solve_kind_constraint ki ki' =
     error
       [
-        Error.Line.Text
+        Text
           ("Cannot solve kind constraint: "
           ^ Type.pretty_kind ki
           ^ " = "
@@ -85,6 +85,10 @@ module Report = struct
       ]
 
   let failed_occurs_check name = error [ Text ("Failed occurs check: " ^ name) ]
+
+  let duplicate_definition name spans =
+    let spans = List.map (fun s -> Error.Line.Quote s) spans in
+    error ([ Error.Line.Text ("Duplicate definitions of: " ^ name) ] @ spans)
 end
 
 module type Monad = sig
@@ -439,9 +443,65 @@ module Kinds = struct
            pure ((name, kind, alts), Tast.TyDef { span; name; kind; alts }))
          ty_defs)
 
+  let check_duplicate_ty_defs (ty_defs : Cst.ty_def list) =
+    let open Result.Syntax in
+    let defs = List.map (fun (span, name, _, _) -> (name, span)) ty_defs in
+    let def_map =
+      List.fold_left
+        (fun map (name, span) ->
+          match StrMap.find_opt name map with
+          | None -> StrMap.add name [ span ] map
+          | Some spans -> StrMap.add name (span :: spans) map)
+        StrMap.empty defs
+    in
+    let* _ =
+      Result.accumulate_list
+        (fun (name, spans) ->
+          if List.length spans > 1 then
+            Error [ Report.duplicate_definition name spans ]
+          else
+            Ok ())
+        (List.of_seq (StrMap.to_seq def_map))
+    in
+    Ok ()
+
+  let check_duplicate_constructors (ty_defs : Cst.ty_def list) =
+    let open Result.Syntax in
+    let span_cons =
+      List.flatten
+        (List.map
+           (fun (span, _, _, alts) ->
+             List.map (fun (con, _) -> (con, span)) alts)
+           ty_defs)
+    in
+    let cons_map =
+      List.fold_left
+        (fun map (name, span) ->
+          match StrMap.find_opt name map with
+          | None -> StrMap.add name (1, [ span ]) map
+          | Some (n, spans) ->
+              StrMap.add name
+                (n + 1, span :: List.filter (fun s -> not (s = span)) spans)
+                map)
+        StrMap.empty span_cons
+    in
+    let* _ =
+      Result.accumulate_list
+        (fun (name, (n, spans)) ->
+          if n > 1 then
+            Error [ Report.duplicate_definition name spans ]
+          else
+            Ok ())
+        (List.of_seq (StrMap.to_seq cons_map))
+    in
+    Ok ()
+
   (** Solve all type definitions, one strongly connected component at a time *)
   let solve_ty_defs (ctx : Ctx.t) (ty_defs : Cst.ty_def list) =
     let open Result.Syntax in
+    (* TODO: check_duplicate_* error message should point to specific identifiers *)
+    let* _ = check_duplicate_ty_defs ty_defs in
+    let* _ = check_duplicate_constructors ty_defs in
     let free_types = Engine.get_free_types ctx ty_defs in
     let scc = StrSCC.(run (make free_types)) in
     let top_level =
@@ -1006,8 +1066,32 @@ module Types = struct
                     Ok (Tast.TmDef { scheme; span; name; expr }))
               defs)
 
+  let check_duplicate_defs (tm_defs : Cst.tm_def list) =
+    let open Result.Syntax in
+    let defs = List.map (fun (span, name, _, _) -> (name, span)) tm_defs in
+    let def_map =
+      List.fold_left
+        (fun map (name, span) ->
+          match StrMap.find_opt name map with
+          | None -> StrMap.add name [ span ] map
+          | Some spans -> StrMap.add name (span :: spans) map)
+        StrMap.empty defs
+    in
+    let* _ =
+      Result.accumulate_list
+        (fun (name, spans) ->
+          if List.length spans > 1 then
+            Error [ Report.duplicate_definition name spans ]
+          else
+            Ok ())
+        (List.of_seq (StrMap.to_seq def_map))
+    in
+    Ok ()
+
   (** Solves all bindings one strongly connected component at a time *)
   let solve_defs (ctx : Ctx.t) (defs : Cst.tm_def list) =
+    let open Result.Syntax in
+    let* _ = check_duplicate_defs defs in
     let free_terms = Engine.get_free_terms ctx defs in
     let scc = StrSCC.(run (make free_terms)) in
     let top_level =
@@ -1024,7 +1108,7 @@ module Types = struct
         (List.filter_map (fun name -> StrMap.find_opt name top_level))
         scc
     in
-    let result =
+    let* groups, _s =
       StateResult.accumulate_list
         (fun bs ctx ->
           match solve_def_group ctx bs with
@@ -1039,9 +1123,7 @@ module Types = struct
               Ok (bs', new_ctx))
         groups ctx
     in
-    match result with
-    | Error e -> Error e
-    | Ok (bind_bind, _s) -> Ok (List.flatten bind_bind)
+    Ok (List.flatten groups)
 end
 
 (** Infers the type of a module *)
