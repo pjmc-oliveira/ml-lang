@@ -1,6 +1,14 @@
 open Ml_lang
 open Extensions
-open Result.Syntax
+
+module W = WriterOption.Make (struct
+  type t = Error.t list
+
+  let empty = []
+  let concat = ( @ )
+end)
+
+open W.Syntax
 
 (* TODO: make this lazy? *)
 let read_lines path : string =
@@ -30,11 +38,15 @@ let solve cst = Solver.(module_ cst BuiltIns.ty_ctx)
 let interpret tast = Interpreter.run ~context:BuiltIns.tm_ctx tast
 
 let run str =
-  let* tks = lex str in
-  let* cst = parse tks in
-  let* tast = solve cst in
-  let* value = interpret tast in
-  Ok value
+  let tast =
+    let* tks = lex str in
+    let* cst = parse tks in
+    let* tast = solve cst in
+    W.pure tast
+  in
+  match tast with
+  | Some tast, [] -> interpret tast
+  | _, errs -> Error errs
 
 let report res =
   match res with
