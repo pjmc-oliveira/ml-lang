@@ -1,8 +1,7 @@
 open Extensions
+module Str_map = Map.Make (String)
 
 let fail ?location lines : Error.t = { kind = Lexer; lines; location }
-
-module StrMap = Map.Make (String)
 
 let keywords =
   [
@@ -22,7 +21,7 @@ let keywords =
     ("False", Bool false);
   ]
   |> List.to_seq
-  |> StrMap.of_seq
+  |> Str_map.of_seq
 
 let unexpected_char char loc =
   fail
@@ -58,7 +57,7 @@ let token src : (Token.t * Source.span, Error.t) result * Source.t =
             Source.take_while (fun c -> Char.is_alphanum c || c = '_') src
           in
           let span = Source.between src src'' in
-          match StrMap.find_opt name keywords with
+          match Str_map.find_opt name keywords with
           | None -> (Ok (UpperIdent name, span), src'')
           | Some kw -> (Ok (kw, span), src''))
       | _ when Char.is_alpha_lower c -> (
@@ -66,7 +65,7 @@ let token src : (Token.t * Source.span, Error.t) result * Source.t =
             Source.take_while (fun c -> Char.is_alphanum c || c = '_') src
           in
           let span = Source.between src src'' in
-          match StrMap.find_opt name keywords with
+          match Str_map.find_opt name keywords with
           | None -> (Ok (LowerIdent name, span), src'')
           | Some kw -> (Ok (kw, span), src''))
       | _ when Char.is_digit c ->

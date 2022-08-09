@@ -1,18 +1,18 @@
-module StrMap = Map.Make (String)
+module Str_map = Map.Make (String)
 
-type 'a t = 'a StrMap.t
+type 'a t = 'a Str_map.t
 type key = String.t
 
-let empty = StrMap.empty
-let insert = StrMap.add
-let lookup = StrMap.find_opt
-let remove = StrMap.remove
-let of_list pairs = StrMap.of_seq (List.to_seq pairs)
-let to_list env = StrMap.to_seq env |> List.of_seq
-let equal = StrMap.equal
+let empty = Str_map.empty
+let insert = Str_map.add
+let lookup = Str_map.find_opt
+let remove = Str_map.remove
+let of_list pairs = Str_map.of_seq (List.to_seq pairs)
+let to_list env = Str_map.to_seq env |> List.of_seq
+let equal = Str_map.equal
 
 let union left right =
   (* TODO: Which precedence does this have? *)
-  StrMap.fold insert right left
+  Str_map.fold insert right left
 
-let map = StrMap.map
+let map = Str_map.map

@@ -2,7 +2,7 @@ open OUnit2
 open Ml_lang
 open Extensions
 
-module W = WriterOption.Make (struct
+module W = Writer_option.Make (struct
   type t = Error.t list
 
   let empty = []

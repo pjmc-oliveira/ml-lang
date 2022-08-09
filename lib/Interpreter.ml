@@ -2,10 +2,10 @@ open Extensions
 
 type tm_env = Value.t Env.t
 
-module S = StateResult
-open StateResult.Syntax
+module S = State_result
+open State_result.Syntax
 
-type 'a t = ('a, tm_env, Error.t list) StateResult.t
+type 'a t = ('a, tm_env, Error.t list) State_result.t
 
 let error ?location lines : Error.t = { kind = Interpreter; lines; location }
 
@@ -91,7 +91,7 @@ let rec eval (e : Tast.expr) (env : tm_env) : (Value.t, Error.t) result =
               eval case env')
       | _ ->
           failwith
-            ("Imposible cannot match to non-constructor: " ^ Value.show expr))
+            ("Impossible cannot match to non-constructor: " ^ Value.show expr))
 
 (** Force a value to weak-head normal form *)
 and whnf (v : Value.t) : (Value.t, Error.t) result =

@@ -1,7 +1,7 @@
 open OUnit2
 open Ml_lang
-module StrSCC = SCC.Make (String)
-module StrMap = Map.Make (String)
+module Str_scc = Scc.Make (String)
+module Str_map = Map.Make (String)
 
 let string_of_scc scc =
   "[\n"
@@ -19,7 +19,7 @@ let suite =
   >::: [
          ( "finds strongly connnected components" >:: fun _ ->
            let input =
-             StrMap.of_seq
+             Str_map.of_seq
                (List.to_seq
                   [
                     ("e0", [ "e1" ]);
@@ -32,7 +32,7 @@ let suite =
                     ("e7", []);
                   ])
            in
-           let actual = StrSCC.(run (make input)) in
+           let actual = Str_scc.(run (make input)) in
            let expected =
              [ [ "e7" ]; [ "e5"; "e6"; "e4" ]; [ "e1"; "e2"; "e3"; "e0" ] ]
            in

@@ -1,7 +1,7 @@
 open Extensions
-module StrMap = Map.Make (String)
-module StrSet = Set.Make (String)
-module StrSCC = SCC.Make (String)
+module Str_map = Map.Make (String)
+module Str_set = Set.Make (String)
+module Str_scc = Scc.Make (String)
 
 type constraint_ctx =
   (* Mismatched types *)
@@ -165,19 +165,19 @@ module Core = struct
   (** Generalizes a monomorphic type to a polymorphic type *)
   let generalize (ty : Type.mono) : Type.poly =
     (* Gets the free type variables of a type *)
-    let rec free_ty_vars : Type.mono -> StrSet.t = function
-      | Type.Int | Type.Bool | Type.Con _ -> StrSet.empty
-      | Type.Var name -> StrSet.singleton name
+    let rec free_ty_vars : Type.mono -> Str_set.t = function
+      | Type.Int | Type.Bool | Type.Con _ -> Str_set.empty
+      | Type.Var name -> Str_set.singleton name
       | App (func, arg) ->
           let func = free_ty_vars func in
           let arg = free_ty_vars arg in
-          StrSet.union func arg
+          Str_set.union func arg
       | Type.Arrow (from, to_) ->
           let from = free_ty_vars from in
           let to_ = free_ty_vars to_ in
-          StrSet.union from to_
+          Str_set.union from to_
     in
-    let ty_vars = List.of_seq (StrSet.to_seq (free_ty_vars ty)) in
+    let ty_vars = List.of_seq (Str_set.to_seq (free_ty_vars ty)) in
     Type.Poly (ty_vars, ty)
 
   (** Normalizes the type variables of a scheme *)
@@ -262,40 +262,40 @@ module Kinds = struct
       let* _ = set (n + 1) in
       pure kind
 
-    let rec free_types : Cst.ty -> StrSet.t = function
+    let rec free_types : Cst.ty -> Str_set.t = function
       (* TODO: Add primitive types to ctx? *)
-      | TCon (_, "Int") | TCon (_, "Bool") -> StrSet.empty
-      | TCon (_, name) -> StrSet.singleton name
-      | TVar (_, name) -> StrSet.singleton name
+      | TCon (_, "Int") | TCon (_, "Bool") -> Str_set.empty
+      | TCon (_, name) -> Str_set.singleton name
+      | TVar (_, name) -> Str_set.singleton name
       | TApp (_, func, arg) ->
           let func_vars = free_types func in
           let arg_vars = free_types arg in
-          StrSet.union func_vars arg_vars
+          Str_set.union func_vars arg_vars
       | TArr (_, from, to_) ->
           let from_vars = free_types from in
           let to_vars = free_types to_ in
-          StrSet.union from_vars to_vars
+          Str_set.union from_vars to_vars
 
     let get_free_types (ctx : Ctx.t) (ty_defs : Cst.ty_def list) =
       let types_of_alts (alts : Cst.alt list) =
-        List.fold_left StrSet.union StrSet.empty
+        List.fold_left Str_set.union Str_set.empty
           (List.flatten (List.map (fun (_, ty) -> List.map free_types ty) alts))
       in
       let free_types =
         ty_defs
         |> List.map (fun (_, name, tvars, alts) ->
-               let tvars = StrSet.of_list tvars in
+               let tvars = Str_set.of_list tvars in
                let types = types_of_alts alts in
                let free_types =
                  types
-                 |> StrSet.filter (fun ty -> not (StrSet.mem ty tvars))
-                 |> StrSet.filter (fun ty ->
+                 |> Str_set.filter (fun ty -> not (Str_set.mem ty tvars))
+                 |> Str_set.filter (fun ty ->
                         Option.is_none (Ctx.lookup_ty ty ctx))
                in
-               (name, List.of_seq (StrSet.to_seq free_types)))
+               (name, List.of_seq (Str_set.to_seq free_types)))
       in
 
-      StrMap.of_seq (List.to_seq free_types)
+      Str_map.of_seq (List.to_seq free_types)
 
     let rec occurs_check name : Type.kind -> unit t = function
       | KVar name' when name = name' -> fail [ Report.failed_occurs_check name ]
@@ -419,8 +419,6 @@ module Kinds = struct
 
   (* Bindings *)
 
-  module StrSCC = SCC.Make (String)
-
   (** Solve a mutually recursive group of type definitions *)
   let solve_ty_def_group (ty_defs : Cst.ty_def list) =
     let* fresh_kinds =
@@ -444,10 +442,10 @@ module Kinds = struct
     let def_map =
       List.fold_left
         (fun map (name, span) ->
-          match StrMap.find_opt name map with
-          | None -> StrMap.add name [ span ] map
-          | Some spans -> StrMap.add name (span :: spans) map)
-        StrMap.empty defs
+          match Str_map.find_opt name map with
+          | None -> Str_map.add name [ span ] map
+          | Some spans -> Str_map.add name (span :: spans) map)
+        Str_map.empty defs
     in
     let* _ =
       Result.accumulate_list
@@ -456,7 +454,7 @@ module Kinds = struct
             Error [ Report.duplicate_definition name spans ]
           else
             Ok ())
-        (List.of_seq (StrMap.to_seq def_map))
+        (List.of_seq (Str_map.to_seq def_map))
     in
     Ok ()
 
@@ -472,13 +470,13 @@ module Kinds = struct
     let cons_map =
       List.fold_left
         (fun map (name, span) ->
-          match StrMap.find_opt name map with
-          | None -> StrMap.add name (1, [ span ]) map
+          match Str_map.find_opt name map with
+          | None -> Str_map.add name (1, [ span ]) map
           | Some (n, spans) ->
-              StrMap.add name
+              Str_map.add name
                 (n + 1, span :: List.filter (fun s -> not (s = span)) spans)
                 map)
-        StrMap.empty span_cons
+        Str_map.empty span_cons
     in
     let* _ =
       Result.accumulate_list
@@ -487,7 +485,7 @@ module Kinds = struct
             Error [ Report.duplicate_definition name spans ]
           else
             Ok ())
-        (List.of_seq (StrMap.to_seq cons_map))
+        (List.of_seq (Str_map.to_seq cons_map))
     in
     Ok ()
 
@@ -498,18 +496,18 @@ module Kinds = struct
     let* _ = check_duplicate_ty_defs ty_defs in
     let* _ = check_duplicate_constructors ty_defs in
     let free_types = Engine.get_free_types ctx ty_defs in
-    let scc = StrSCC.(run (make free_types)) in
+    let scc = Str_scc.(run (make free_types)) in
     let top_level =
-      StrMap.of_seq
+      Str_map.of_seq
         (List.to_seq
            (List.map (fun ((_, name, _, _) as ty) -> (name, ty)) ty_defs))
     in
     let groups =
-      List.map (List.map (fun name -> StrMap.find name top_level)) scc
+      List.map (List.map (fun name -> Str_map.find name top_level)) scc
     in
     (* TODO: Should we return this? *)
     let* results, _ctx' =
-      StateResult.accumulate_list
+      State_result.accumulate_list
         (fun group ctx ->
           let* ty_defs, cs, s = solve_ty_def_group group ctx 0 in
           let* subst, _cs', _s' = Engine.solve_constraints cs ctx s in
@@ -710,25 +708,25 @@ module Types = struct
       pure (Core.apply s ty)
 
     (** Gets the free variables of an expression *)
-    let rec free_vars : Cst.expr -> StrSet.t = function
-      | ELit _ -> StrSet.empty
-      | EVar (_, name) -> StrSet.singleton name
+    let rec free_vars : Cst.expr -> Str_set.t = function
+      | ELit _ -> Str_set.empty
+      | EVar (_, name) -> Str_set.singleton name
       | ELet (_, name, _, def, body) ->
           let def_vars = free_vars def in
           let body_vars = free_vars body in
-          StrSet.(filter (fun v -> not (v = name)) (union def_vars body_vars))
+          Str_set.(filter (fun v -> not (v = name)) (union def_vars body_vars))
       | EIf (_, cond, con, alt) ->
           let cond_vars = free_vars cond in
           let con_vars = free_vars con in
           let alt_vars = free_vars alt in
-          StrSet.(union cond_vars (union con_vars alt_vars))
+          Str_set.(union cond_vars (union con_vars alt_vars))
       | ELam (_, param, _, body) ->
           let body_vars = free_vars body in
-          StrSet.filter (fun v -> not (v = param)) body_vars
+          Str_set.filter (fun v -> not (v = param)) body_vars
       | EApp (_, func, arg) ->
           let func_vars = free_vars func in
           let arg_vars = free_vars arg in
-          StrSet.union func_vars arg_vars
+          Str_set.union func_vars arg_vars
       | EAnn (_, expr, _) -> free_vars expr
       | EMatch (_, expr, alts) ->
           let expr_vars = free_vars expr in
@@ -738,19 +736,19 @@ module Types = struct
                 let vars = List.map (fun (v, _) -> v) vars in
                 let case = free_vars case in
                 let alt_vars =
-                  List.fold_left (fun s v -> StrSet.remove v s) case vars
+                  List.fold_left (fun s v -> Str_set.remove v s) case vars
                 in
-                StrSet.union s alt_vars)
-              StrSet.empty alts
+                Str_set.union s alt_vars)
+              Str_set.empty alts
           in
-          StrSet.union expr_vars alts_vars
+          Str_set.union expr_vars alts_vars
 
     (** Gets the free terms of an expression, removing terms in the ctx *)
     let get_free_terms (ctx : Ctx.t) (defs : Cst.tm_def list) =
       let free_terms =
         List.map (fun (_, name, _, expr) -> (name, free_vars expr)) defs
       in
-      let list_of_set s = List.of_seq (StrSet.to_seq s) in
+      let list_of_set s = List.of_seq (Str_set.to_seq s) in
       let free_terms =
         List.map
           (fun (name, vars) ->
@@ -763,7 +761,7 @@ module Types = struct
                 (list_of_set vars) ))
           free_terms
       in
-      StrMap.of_seq (List.to_seq free_terms)
+      Str_map.of_seq (List.to_seq free_terms)
   end
 
   open M
@@ -800,7 +798,7 @@ module Types = struct
     let free_vars = Engine.free_vars def in
     let* expr_t = Option.fold ~none:Engine.fresh_var ~some:Resolve.ty ann in
     (* Only create recursive "let" if "name" is present in "def"  *)
-    if StrSet.mem name free_vars then
+    if Str_set.mem name free_vars then
       Engine.scope name expr_t
         (let* def_t, def = infer def in
          Engine.scope name def_t
@@ -981,13 +979,13 @@ module Types = struct
             let duplicate_heads =
               List.fold_left
                 (fun m h ->
-                  StrMap.add h
+                  Str_map.add h
                     (Option.fold ~none:1
                        ~some:(fun n -> n + 1)
-                       (StrMap.find_opt h m))
+                       (Str_map.find_opt h m))
                     m)
-                StrMap.empty heads
-              |> StrMap.to_seq
+                Str_map.empty heads
+              |> Str_map.to_seq
               |> List.of_seq
               |> List.filter (fun (_, n) -> n > 1)
               |> List.map (fun (h, _) -> h)
@@ -1076,10 +1074,10 @@ module Types = struct
     let def_map =
       List.fold_left
         (fun map (name, span) ->
-          match StrMap.find_opt name map with
-          | None -> StrMap.add name [ span ] map
-          | Some spans -> StrMap.add name (span :: spans) map)
-        StrMap.empty defs
+          match Str_map.find_opt name map with
+          | None -> Str_map.add name [ span ] map
+          | Some spans -> Str_map.add name (span :: spans) map)
+        Str_map.empty defs
     in
     let* _ =
       Result.accumulate_list
@@ -1088,7 +1086,7 @@ module Types = struct
             Error [ Report.duplicate_definition name spans ]
           else
             Ok ())
-        (List.of_seq (StrMap.to_seq def_map))
+        (List.of_seq (Str_map.to_seq def_map))
     in
     Ok ()
 
@@ -1097,9 +1095,9 @@ module Types = struct
     let open Result.Syntax in
     let* _ = check_duplicate_defs defs in
     let free_terms = Engine.get_free_terms ctx defs in
-    let scc = StrSCC.(run (make free_terms)) in
+    let scc = Str_scc.(run (make free_terms)) in
     let top_level =
-      StrMap.of_seq
+      Str_map.of_seq
         (List.to_seq
            (* TODO: Why filter map? *)
            (List.filter_map
@@ -1109,11 +1107,11 @@ module Types = struct
     in
     let groups =
       List.map
-        (List.filter_map (fun name -> StrMap.find_opt name top_level))
+        (List.filter_map (fun name -> Str_map.find_opt name top_level))
         scc
     in
     let* groups, _s =
-      StateResult.accumulate_list
+      State_result.accumulate_list
         (fun bs ctx ->
           match solve_def_group ctx bs with
           | Error e -> Error e

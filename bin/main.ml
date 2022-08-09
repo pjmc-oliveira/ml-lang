@@ -1,7 +1,7 @@
 open Ml_lang
 open Extensions
 
-module W = WriterOption.Make (struct
+module W = Writer_option.Make (struct
   type t = Error.t list
 
   let empty = []
@@ -34,8 +34,8 @@ let lex str =
   Lexer.tokens src
 
 let parse tks = Parser.(parse module_ tks)
-let solve cst = Solver.(module_ cst BuiltIns.ty_ctx)
-let interpret tast = Interpreter.run ~context:BuiltIns.tm_ctx tast
+let solve cst = Solver.(module_ cst Built_ins.ty_ctx)
+let interpret tast = Interpreter.run ~context:Built_ins.tm_ctx tast
 
 let run str =
   let tast =

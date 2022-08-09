@@ -3,7 +3,7 @@ open Ml_lang
 open Extensions
 open Result.Syntax
 
-module W = WriterOption.Make (struct
+module W = Writer_option.Make (struct
   type t = Error.t list
 
   let empty = []
@@ -116,7 +116,7 @@ let suite =
               def main = id1 (id2 1)
             }"
            (Int 1);
-         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+         test_interpreter ~tm_ctx:Built_ins.tm_ctx ~ty_ctx:Built_ins.ty_ctx
            "higher order function"
            "module Hello = {
               def hello : (Int -> Int) -> Int = \\f
@@ -125,7 +125,7 @@ let suite =
               def main = hello identity
             }"
            (Int 2);
-         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+         test_interpreter ~tm_ctx:Built_ins.tm_ctx ~ty_ctx:Built_ins.ty_ctx
            "built-in functions"
            "module Hello = {
               def my_add = \\x : Int. \\y : Int.
@@ -134,7 +134,7 @@ let suite =
               def main = add 1 2
             }"
            (Int 3);
-         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+         test_interpreter ~tm_ctx:Built_ins.tm_ctx ~ty_ctx:Built_ins.ty_ctx
            "recursive function"
            "module Hello = {
               def fact : Int -> Int = \\x
@@ -146,7 +146,7 @@ let suite =
               def main = fact 5
             }"
            (Int 120);
-         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+         test_interpreter ~tm_ctx:Built_ins.tm_ctx ~ty_ctx:Built_ins.ty_ctx
            "recursive let-binding"
            "module Hello = {
               def main =
@@ -159,7 +159,7 @@ let suite =
                 fact 5
             }"
            (Int 120);
-         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+         test_interpreter ~tm_ctx:Built_ins.tm_ctx ~ty_ctx:Built_ins.ty_ctx
            "top-level polymorphic function"
            "module Hello = {
               def identity = \\x x
@@ -171,7 +171,7 @@ let suite =
             }"
            (Int 1);
          (let tm_ctx =
-            Env.union BuiltIns.tm_ctx
+            Env.union Built_ins.tm_ctx
               (Env.of_list
                  [
                    ( "exit",
@@ -182,7 +182,7 @@ let suite =
                  ])
           in
           let ty_ctx =
-            Ctx.union BuiltIns.ty_ctx
+            Ctx.union Built_ins.ty_ctx
               (Ctx.of_terms_list [ ("exit", Type.(mono (Arrow (Int, Int)))) ])
           in
           test_interpreter ~tm_ctx ~ty_ctx "non-strict function application"
@@ -193,7 +193,7 @@ let suite =
               def main = const 1 (exit 2)
             }"
             (Int 1));
-         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+         test_interpreter ~tm_ctx:Built_ins.tm_ctx ~ty_ctx:Built_ins.ty_ctx
            "custom type"
            "module Hello = {
               type AType =
@@ -203,7 +203,7 @@ let suite =
               def main = Wibble 1 True
             }"
            (Con { head = "Wibble"; arity = 2; tail = [ Int 1; Bool true ] });
-         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+         test_interpreter ~tm_ctx:Built_ins.tm_ctx ~ty_ctx:Built_ins.ty_ctx
            "wrap constructor in function"
            "module Hello = {
               type AType =
@@ -214,7 +214,7 @@ let suite =
               def main = wibble1 True
             }"
            (Con { head = "Wibble"; arity = 2; tail = [ Int 1; Bool true ] });
-         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+         test_interpreter ~tm_ctx:Built_ins.tm_ctx ~ty_ctx:Built_ins.ty_ctx
            "match expression"
            "module Hello = {
               type Nat = Zero | Succ Nat
@@ -228,7 +228,7 @@ let suite =
             }"
            (Int 2);
          (let tm_ctx =
-            Env.union BuiltIns.tm_ctx
+            Env.union Built_ins.tm_ctx
               (Env.of_list
                  [
                    ( "exit",
@@ -239,7 +239,7 @@ let suite =
                  ])
           in
           let ty_ctx =
-            Ctx.union BuiltIns.ty_ctx
+            Ctx.union Built_ins.ty_ctx
               (Ctx.of_terms_list [ ("exit", Type.(mono (Arrow (Int, Int)))) ])
           in
           test_interpreter ~tm_ctx ~ty_ctx
@@ -255,7 +255,7 @@ let suite =
                 end
             }"
             (Bool true));
-         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+         test_interpreter ~tm_ctx:Built_ins.tm_ctx ~ty_ctx:Built_ins.ty_ctx
            "program: fold_right"
            "module Hello = {
               type List a =
@@ -271,7 +271,7 @@ let suite =
               def main = fold_right add 0 (Cons 1 (Cons 2 (Cons 3 Nil)))
             }"
            (Int 6);
-         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+         test_interpreter ~tm_ctx:Built_ins.tm_ctx ~ty_ctx:Built_ins.ty_ctx
            "program: fib recursive"
            "module Hello = {
               def fib = \\n
@@ -285,7 +285,7 @@ let suite =
               def main = fib 6
              }"
            (Int 8);
-         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+         test_interpreter ~tm_ctx:Built_ins.tm_ctx ~ty_ctx:Built_ins.ty_ctx
            "program: fib iterative"
            "module Hello = {
               def fib_helper = \\a \\b \\n
@@ -299,7 +299,7 @@ let suite =
               def main = fib 6
              }"
            (Int 8);
-         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+         test_interpreter ~tm_ctx:Built_ins.tm_ctx ~ty_ctx:Built_ins.ty_ctx
            "program: List map"
            "module Hello = {
               type List a = Nil | Cons a (List a)
@@ -322,7 +322,7 @@ let suite =
               def main = sum (map (add 1) (Cons 0 (Cons 1 (Cons 2 Nil))))
              }"
            (Int 6);
-         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+         test_interpreter ~tm_ctx:Built_ins.tm_ctx ~ty_ctx:Built_ins.ty_ctx
            "program: List head"
            "module Hello = {
               type List a  = Nil | Cons a (List a)
@@ -337,7 +337,7 @@ let suite =
               def main = head (Cons 1 Nil)
              }"
            (Con { head = "Some"; arity = 1; tail = [ Int 1 ] });
-         test_interpreter ~tm_ctx:BuiltIns.tm_ctx ~ty_ctx:BuiltIns.ty_ctx
+         test_interpreter ~tm_ctx:Built_ins.tm_ctx ~ty_ctx:Built_ins.ty_ctx
            "program: Maybe apply"
            "module Hello = {
               type Maybe a = None | Some a

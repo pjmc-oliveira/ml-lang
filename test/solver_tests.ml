@@ -2,6 +2,15 @@ open OUnit2
 open Ml_lang
 open Extensions
 
+module W = Writer_option.Make (struct
+  type t = Error.t list
+
+  let empty = []
+  let concat = ( @ )
+end)
+
+open W.Syntax
+
 (* TODO: pretty print *)
 let string_of_ctx ctx =
   let terms =
@@ -54,15 +63,6 @@ let ty_ctx_equal_weak (l, _e) (r, _e') =
   | Some l, Some r -> Ctx.tm_equal ( = ) l r && Ctx.ty_equal ( = ) l r
   | None, None -> true
   | _, _ -> false
-
-module W = WriterOption.Make (struct
-  type t = Error.t list
-
-  let empty = []
-  let concat = ( @ )
-end)
-
-open W.Syntax
 
 let solve_module str ctx =
   let src = Source.of_string str in
@@ -177,20 +177,20 @@ let suite =
                   Type.(
                     Poly ([ "t0" ], Arrow (Arrow (Int, Var "t0"), Var "t0"))) );
               ]);
-         test_solver ~initial_ctx:BuiltIns.ty_ctx "built-in functions"
+         test_solver ~initial_ctx:Built_ins.ty_ctx "built-in functions"
            "module Hello = {
               def my_add = \\x : Int. \\y : Int.
                 add x y
               def main = my_add 1 2
             }"
            Ctx.(
-             union BuiltIns.ty_ctx
+             union Built_ins.ty_ctx
                (of_terms_list
                   [
                     ("my_add", Type.(mono (Arrow (Int, Arrow (Int, Int)))));
                     ("main", Type.(mono Int));
                   ]));
-         test_solver ~initial_ctx:BuiltIns.ty_ctx "recursive let binding"
+         test_solver ~initial_ctx:Built_ins.ty_ctx "recursive let binding"
            "module Hello = {
               def main =
                 let fact : Int -> Int = \\x
@@ -202,9 +202,9 @@ let suite =
                   fact
             }"
            Ctx.(
-             union BuiltIns.ty_ctx
+             union Built_ins.ty_ctx
                (of_terms_list [ ("main", Type.(mono (Arrow (Int, Int)))) ]));
-         test_solver ~initial_ctx:BuiltIns.ty_ctx
+         test_solver ~initial_ctx:Built_ins.ty_ctx
            "annotated mutually recursive functions"
            "module Hello = {
               def is_even : Int -> Bool = \\x
@@ -220,13 +220,13 @@ let suite =
                   not (is_even (sub x 1))
             }"
            Ctx.(
-             union BuiltIns.ty_ctx
+             union Built_ins.ty_ctx
                (of_terms_list
                   [
                     ("is_even", Type.(mono (Arrow (Int, Bool))));
                     ("is_odd", Type.(mono (Arrow (Int, Bool))));
                   ]));
-         test_solver ~initial_ctx:BuiltIns.ty_ctx
+         test_solver ~initial_ctx:Built_ins.ty_ctx
            "un-annotated mutually recursive functions"
            "module Hello = {
               def is_even = \\x
@@ -242,7 +242,7 @@ let suite =
                   not (is_even (sub x 1))
             }"
            Ctx.(
-             union BuiltIns.ty_ctx
+             union Built_ins.ty_ctx
                (of_terms_list
                   [
                     ("is_even", Type.(mono (Arrow (Int, Bool))));
@@ -301,7 +301,7 @@ let suite =
                   ("Succ", Type.(mono (Arrow (Con "Nat", Con "Nat"))));
                   ("Zero", Type.(mono (Con "Nat")));
                 ]);
-         test_solver ~initial_ctx:BuiltIns.ty_ctx "match on custom type"
+         test_solver ~initial_ctx:Built_ins.ty_ctx "match on custom type"
            "module Hello = {
               type Nat = Zero | Succ Nat
               def two = Succ (Succ Zero)
@@ -312,7 +312,7 @@ let suite =
                 end
             }"
            Ctx.(
-             union BuiltIns.ty_ctx
+             union Built_ins.ty_ctx
                (of_list
                   ~types:[ ("Nat", Type.KType) ]
                   ~terms:

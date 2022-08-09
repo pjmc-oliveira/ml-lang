@@ -1,62 +1,64 @@
-module StrCtx = Map.Make (String)
+module Str_map = Map.Make (String)
 
 type key = string
 
 type t = {
-  types : Type.kind StrCtx.t;
-  terms : Type.poly StrCtx.t;
-  constructors_of_type : string list StrCtx.t;
+  types : Type.kind Str_map.t;
+  terms : Type.poly Str_map.t;
+  constructors_of_type : string list Str_map.t;
 }
 
 let empty =
   {
-    types = StrCtx.empty;
-    terms = StrCtx.empty;
-    constructors_of_type = StrCtx.empty;
+    types = Str_map.empty;
+    terms = Str_map.empty;
+    constructors_of_type = Str_map.empty;
   }
 
-let insert name ty ctx = { ctx with terms = StrCtx.add name ty ctx.terms }
-let lookup name ctx = StrCtx.find_opt name ctx.terms
+let insert name ty ctx = { ctx with terms = Str_map.add name ty ctx.terms }
+let lookup name ctx = Str_map.find_opt name ctx.terms
 
 let insert_ty name kind ctx =
-  { ctx with types = StrCtx.add name kind ctx.types }
+  { ctx with types = Str_map.add name kind ctx.types }
 
-let lookup_ty name ctx = StrCtx.find_opt name ctx.types
-let lookup_constructors name ctx = StrCtx.find_opt name ctx.constructors_of_type
+let lookup_ty name ctx = Str_map.find_opt name ctx.types
+
+let lookup_constructors name ctx =
+  Str_map.find_opt name ctx.constructors_of_type
 
 let of_list ~terms ~types =
   {
-    types = StrCtx.of_seq (List.to_seq types);
-    terms = StrCtx.of_seq (List.to_seq terms);
-    constructors_of_type = StrCtx.empty;
+    types = Str_map.of_seq (List.to_seq types);
+    terms = Str_map.of_seq (List.to_seq terms);
+    constructors_of_type = Str_map.empty;
   }
 
 let of_terms_list terms_list =
   {
-    types = StrCtx.empty;
-    terms = StrCtx.of_seq (List.to_seq terms_list);
-    constructors_of_type = StrCtx.empty;
+    types = Str_map.empty;
+    terms = Str_map.of_seq (List.to_seq terms_list);
+    constructors_of_type = Str_map.empty;
   }
 
 let of_types_list types_list =
   {
-    terms = StrCtx.empty;
-    types = StrCtx.of_seq (List.to_seq types_list);
-    constructors_of_type = StrCtx.empty;
+    terms = Str_map.empty;
+    types = Str_map.of_seq (List.to_seq types_list);
+    constructors_of_type = Str_map.empty;
   }
 
 let of_constructors_list constructors_list =
   {
-    terms = StrCtx.empty;
-    types = StrCtx.empty;
-    constructors_of_type = StrCtx.of_seq (List.to_seq constructors_list);
+    terms = Str_map.empty;
+    types = Str_map.empty;
+    constructors_of_type = Str_map.of_seq (List.to_seq constructors_list);
   }
 
-let to_terms_list ctx = List.of_seq (StrCtx.to_seq ctx.terms)
-let to_types_list ctx = List.of_seq (StrCtx.to_seq ctx.types)
-let tm_equal cmp left right = StrCtx.equal cmp left.terms right.terms
-let ty_equal cmp left right = StrCtx.equal cmp left.types right.types
-let union_helper left right = StrCtx.fold StrCtx.add right left
+let to_terms_list ctx = List.of_seq (Str_map.to_seq ctx.terms)
+let to_types_list ctx = List.of_seq (Str_map.to_seq ctx.types)
+let tm_equal cmp left right = Str_map.equal cmp left.terms right.terms
+let ty_equal cmp left right = Str_map.equal cmp left.types right.types
+let union_helper left right = Str_map.fold Str_map.add right left
 
 let union left right =
   {
