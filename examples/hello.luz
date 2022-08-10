@@ -1,17 +1,43 @@
 module Hello = {
 
-  type Expr =
-    | EInt Int
-    | EAdd Expr Expr
-    | EBlock (List Stmt)
+  type List a = Nil | Cons a (List a)
+  type Maybe a = None | Some a
 
-  type Stmt =
-    | SExpr Expr
-    | SLet Int Expr
+  def drop = \n \list
+    if le n 0 then
+      list
+    else
+      match list with
+      | Nil -> Nil
+      | Cons x xs -> drop (sub n 1) xs
+      end
 
-  type List a =
-    | Nil
-    | Cons a (List a)
+  def zip_with = \f \xs \ys
+    match xs with
+    | Nil -> Nil
+    | Cons x xs ->
+      match ys with
+      | Nil -> Nil
+      | Cons y ys -> Cons (f x y) (zip_with f xs ys)
+      end
+    end
+
+  def fibs = Cons 0 (Cons 1 (zip_with add (fibs) (drop 1 fibs)))
+
+  def nth = \n \list
+    match list with
+    | Nil -> None
+    | Cons x xs ->
+      if le n 0 then
+        Some x
+      else
+        nth (sub n 1) xs
+    end
+
+  -- ~1.70s -> ~0.001s
+  -- def main = nth 25 fibs
+  -- ~30.52s -> ~0.001s
+  -- def main = nth 30 fibs
 
   def main = 1
 

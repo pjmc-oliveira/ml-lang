@@ -3,85 +3,98 @@ let tm_ctx =
     [
       (* Int arithmetic *)
       ( "add",
-        Value.(
-          lift2 (fun l r ->
-              let x = get_int l in
-              let y = get_int r in
-              Int (x + y))) );
+        ref
+          Value.(
+            lift2 (fun l r ->
+                let x = get_int l in
+                let y = get_int r in
+                Int (x + y))) );
       ( "sub",
-        Value.(
-          lift2 (fun l r ->
-              let x = get_int l in
-              let y = get_int r in
-              Int (x - y))) );
+        ref
+          Value.(
+            lift2 (fun l r ->
+                let x = get_int l in
+                let y = get_int r in
+                Int (x - y))) );
       ( "mul",
-        Value.(
-          lift2 (fun l r ->
-              let x = get_int l in
-              let y = get_int r in
-              Int (x * y))) );
+        ref
+          Value.(
+            lift2 (fun l r ->
+                let x = get_int l in
+                let y = get_int r in
+                Int (x * y))) );
       ( "div",
-        Value.(
-          lift2 (fun l r ->
-              let x = get_int l in
-              let y = get_int r in
-              (* TODO: Not sure if this is the right semantics *)
-              Int (x / y))) );
+        ref
+          Value.(
+            lift2 (fun l r ->
+                let x = get_int l in
+                let y = get_int r in
+                (* TODO: Not sure if this is the right semantics *)
+                Int (x / y))) );
       (* Int comparison *)
       ( "eq",
-        Value.(
-          lift2 (fun l r ->
-              let x = get_int l in
-              let y = get_int r in
-              Bool (x = y))) );
+        ref
+          Value.(
+            lift2 (fun l r ->
+                let x = get_int l in
+                let y = get_int r in
+                Bool (x = y))) );
       ( "ne",
-        Value.(
-          lift2 (fun l r ->
-              let x = get_int l in
-              let y = get_int r in
-              Bool (not (x = y)))) );
+        ref
+          Value.(
+            lift2 (fun l r ->
+                let x = get_int l in
+                let y = get_int r in
+                Bool (not (x = y)))) );
       ( "le",
-        Value.(
-          lift2 (fun l r ->
-              let x = get_int l in
-              let y = get_int r in
-              Bool (x <= y))) );
+        ref
+          Value.(
+            lift2 (fun l r ->
+                let x = get_int l in
+                let y = get_int r in
+                Bool (x <= y))) );
       ( "ge",
-        Value.(
-          lift2 (fun l r ->
-              let x = get_int l in
-              let y = get_int r in
-              Bool (x >= y))) );
+        ref
+          Value.(
+            lift2 (fun l r ->
+                let x = get_int l in
+                let y = get_int r in
+                Bool (x >= y))) );
       ( "lt",
-        Value.(
-          lift2 (fun l r ->
-              let x = get_int l in
-              let y = get_int r in
-              Bool (x < y))) );
+        ref
+          Value.(
+            lift2 (fun l r ->
+                let x = get_int l in
+                let y = get_int r in
+                Bool (x < y))) );
       ( "gt",
-        Value.(
-          lift2 (fun l r ->
-              let x = get_int l in
-              let y = get_int r in
-              Bool (x > y))) );
+        ref
+          Value.(
+            lift2 (fun l r ->
+                let x = get_int l in
+                let y = get_int r in
+                Bool (x > y))) );
       (* Bool operations *)
       ( "not",
-        Value.(
-          lift (fun b ->
-              let b = get_bool b in
-              Bool (not b))) );
+        ref
+          Value.(
+            lift (fun b ->
+                let b = get_bool b in
+                Bool (not b))) );
       ( "and",
-        Value.(
-          lift2 (fun l r ->
-              let x = get_bool l in
-              let y = get_bool r in
-              Bool (x && y))) );
+        ref
+          Value.(
+            lift2 (fun l r ->
+                let x = get_bool l in
+                let y = get_bool r in
+                Bool (x && y))) );
       ( "or",
-        Value.(
-          lift2 (fun l r ->
-              let x = get_bool l in
-              let y = get_bool r in
-              Bool (x || y))) );
+        ref
+          Value.(
+            lift2 (fun l r ->
+                let x = get_bool l in
+                let y = get_bool r in
+                Bool (x || y))) );
     ]
 
 let ty_ctx =

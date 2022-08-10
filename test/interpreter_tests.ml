@@ -176,10 +176,11 @@ let suite =
               (Env.of_list
                  [
                    ( "exit",
-                     Value.(
-                       lift (fun x ->
-                           let x = get_int x in
-                           failwith ("Failed with: " ^ string_of_int x))) );
+                     ref
+                       Value.(
+                         lift (fun x ->
+                             let x = get_int x in
+                             failwith ("Failed with: " ^ string_of_int x))) );
                  ])
           in
           let ty_ctx =
@@ -203,7 +204,13 @@ let suite =
 
               def main = Wibble 1 True
             }"
-           (Con { head = "Wibble"; arity = 2; tail = [ Int 1; Bool true ] });
+           Value.(
+             Con
+               {
+                 head = "Wibble";
+                 arity = 2;
+                 tail = [ ref (Int 1); ref (Bool true) ];
+               });
          test_interpreter ~tm_ctx:Built_ins.tm_ctx ~ty_ctx:Built_ins.ty_ctx
            "wrap constructor in function"
            "module Hello = {
@@ -214,7 +221,13 @@ let suite =
               def wibble1 = Wibble 1
               def main = wibble1 True
             }"
-           (Con { head = "Wibble"; arity = 2; tail = [ Int 1; Bool true ] });
+           Value.(
+             Con
+               {
+                 head = "Wibble";
+                 arity = 2;
+                 tail = [ ref (Int 1); ref (Bool true) ];
+               });
          test_interpreter ~tm_ctx:Built_ins.tm_ctx ~ty_ctx:Built_ins.ty_ctx
            "match expression"
            "module Hello = {
@@ -233,10 +246,11 @@ let suite =
               (Env.of_list
                  [
                    ( "exit",
-                     Value.(
-                       lift (fun x ->
-                           let x = get_int x in
-                           failwith ("Failed with: " ^ string_of_int x))) );
+                     ref
+                       Value.(
+                         lift (fun x ->
+                             let x = get_int x in
+                             failwith ("Failed with: " ^ string_of_int x))) );
                  ])
           in
           let ty_ctx =
@@ -337,7 +351,7 @@ let suite =
 
               def main = head (Cons 1 Nil)
              }"
-           (Con { head = "Some"; arity = 1; tail = [ Int 1 ] });
+           Value.(Con { head = "Some"; arity = 1; tail = [ ref (Int 1) ] });
          test_interpreter ~tm_ctx:Built_ins.tm_ctx ~ty_ctx:Built_ins.ty_ctx
            "program: Maybe apply"
            "module Hello = {
@@ -355,7 +369,7 @@ let suite =
 
               def main = apply (Some (add 1)) (Some 1)
              }"
-           (Con { head = "Some"; arity = 1; tail = [ Int 2 ] });
+           Value.(Con { head = "Some"; arity = 1; tail = [ ref (Int 2) ] });
          (* Failure *)
          test_failure "local scope"
            "module Hello = { def foo = let x = 1 in x def main = x }"

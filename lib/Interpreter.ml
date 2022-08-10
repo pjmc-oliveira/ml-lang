@@ -1,6 +1,6 @@
 open Extensions
 
-type tm_env = Value.t Env.t
+type tm_env = Value.t ref Env.t
 
 module S = State_result
 open State_result.Syntax
@@ -17,11 +17,6 @@ let traverse_list (f : 'a -> 'b t) (ls : 'a list) : 'b list t =
       S.pure (y :: ys))
     ls (S.pure [])
 
-let lookup name env =
-  match Env.lookup name env with
-  | Some value -> Ok value
-  | None -> failwith ("Impossible: Unbound variable: " ^ name)
-
 let define name value env = Env.insert name value env
 
 let defer (expr : Tast.expr) (env : tm_env) : Value.t =
@@ -30,58 +25,61 @@ let defer (expr : Tast.expr) (env : tm_env) : Value.t =
 let fix name expr env = Value.Fix { env; name; expr }
 
 (** Evaluate an expression in a context *)
-let rec eval (e : Tast.expr) (env : tm_env) : (Value.t, Error.t) result =
+let rec eval (e : Tast.expr) (env : tm_env) : (Value.t ref, Error.t) result =
   let open Result.Syntax in
   match e with
-  | ELit (_, Int value) -> Ok (Value.Int value)
-  | ELit (_, Bool value) -> Ok (Value.Bool value)
-  | EVar (_, name) -> lookup name env
+  | ELit (_, Int value) -> Ok (ref (Value.Int value))
+  | ELit (_, Bool value) -> Ok (ref (Value.Bool value))
+  | EVar (_, name) -> (
+      match Env.lookup name env with
+      | Some value -> Ok value
+      | None -> failwith ("Impossible: Unbound variable: " ^ name))
   | ELet (_, name, def, body) ->
       let thunk = defer def env in
-      let env' = define name thunk env in
+      let env' = define name (ref thunk) env in
       eval body env'
   | ELetRec (_, name, def, body) ->
       let fixpoint = fix name def env in
-      let env' = define name fixpoint env in
+      let env' = define name (ref fixpoint) env in
       eval body env'
   | EIf (_, cond, con, alt) -> (
       let* cond = eval cond env in
       let* cond = force cond in
-      match cond with
+      match !cond with
       | Bool true -> eval con env
       | Bool false -> eval alt env
-      | _ -> failwith ("Impossible if-cond not bool: " ^ Value.show cond))
-  | ELam (_, _, param, body) -> Ok (Value.Closure { env; param; body })
+      | _ -> failwith ("Impossible if-cond not bool: " ^ Value.show !cond))
+  | ELam (_, _, param, body) -> Ok (ref (Value.Closure { env; param; body }))
   | EApp (_, func, arg) -> (
       let arg' = defer arg env in
       let* func = eval func env in
       (* Only evaluate to WHNF so that we can apply the constructor lazily *)
       let* func = whnf func in
-      match func with
+      match !func with
       | Closure { env = closure_ctx; param; body } ->
-          let closure_ctx' = define param arg' closure_ctx in
+          let closure_ctx' = define param (ref arg') closure_ctx in
           eval body closure_ctx'
       | Con { head; arity; tail } ->
           (* TODO: there has to be a better way to deal with constructors *)
-          Ok (Con { head; arity; tail = tail @ [ arg' ] })
+          Ok (ref (Value.Con { head; arity; tail = tail @ [ ref arg' ] }))
       | Native func ->
           (* Defer to create a thunk value from the ast
              then force to pass it into the native function *)
           let arg = defer arg env in
-          let* arg = force arg in
-          Ok (func arg)
+          let* arg = force (ref arg) in
+          Ok (ref (func !arg))
       | _ ->
-          failwith ("Imposible cannot apply to non-function: " ^ Value.show func)
-      )
+          failwith
+            ("Imposible cannot apply to non-function: " ^ Value.show !func))
   | EMatch (_, expr, alts) -> (
       let* expr = eval expr env in
       let* expr = whnf expr in
-      match expr with
+      match !expr with
       | Con { head; tail; _ } -> (
           match
             List.find_opt (fun (Tast.PCon (name, _), _) -> name = head) alts
           with
-          | None -> failwith ("Un-matched pattern: " ^ Value.show expr)
+          | None -> failwith ("Un-matched pattern: " ^ Value.show !expr)
           | Some (PCon (_, vars), case) ->
               let env' =
                 List.fold_left
@@ -91,43 +89,54 @@ let rec eval (e : Tast.expr) (env : tm_env) : (Value.t, Error.t) result =
               eval case env')
       | _ ->
           failwith
-            ("Impossible cannot match to non-constructor: " ^ Value.show expr))
+            ("Impossible cannot match to non-constructor: " ^ Value.show !expr))
 
 (** Force a value to weak-head normal form *)
-and whnf (v : Value.t) : (Value.t, Error.t) result =
+and whnf (v : Value.t ref) : (Value.t ref, Error.t) result =
   let open Result.Syntax in
-  match v with
-  | Int n -> Ok (Value.Int n)
-  | Bool b -> Ok (Value.Bool b)
-  | Con { head; arity; tail } -> Ok (Value.Con { head; arity; tail })
-  | Closure f -> Ok (Value.Closure f)
+  match !v with
+  | Int n -> Ok (ref (Value.Int n))
+  | Bool b -> Ok (ref (Value.Bool b))
+  | Con { head; arity; tail } -> Ok (ref (Value.Con { head; arity; tail }))
+  | Closure f -> Ok (ref (Value.Closure f))
   | Thunk { env; expr } ->
       let* expr = eval expr env in
+      v := !expr;
       whnf expr
   | Native _ -> Ok v
   | Fix { env; name; expr } ->
-      let env' = define name (Value.Fix { env; name; expr }) env in
+      let env' = define name (ref (Value.Fix { env; name; expr })) env in
       let* expr = eval expr env' in
+      v := !expr;
       (* TODO: should this be a recursive or base call? *)
       whnf expr
 
 (** Fully force a value to its normal form *)
-and force (v : Value.t) : (Value.t, Error.t) result =
+and force (v : Value.t ref) : (Value.t ref, Error.t) result =
   let open Result.Syntax in
-  match v with
-  | Int n -> Ok (Value.Int n)
-  | Bool b -> Ok (Value.Bool b)
+  match !v with
+  | Int n -> Ok (ref (Value.Int n))
+  | Bool b -> Ok (ref (Value.Bool b))
   | Con { head; arity; tail } ->
-      let* tail = Result.traverse_list force tail in
-      Ok (Value.Con { head; arity; tail })
-  | Closure f -> Ok (Value.Closure f)
+      let* tail =
+        Result.traverse_list
+          (fun v ->
+            let* v' = force v in
+            v := !v';
+            Ok v')
+          tail
+      in
+      Ok (ref (Value.Con { head; arity; tail }))
+  | Closure f -> Ok (ref (Value.Closure f))
   | Thunk { env; expr } ->
       let* expr = eval expr env in
+      v := !expr;
       force expr
   | Native _ -> Ok v
   | Fix { env; name; expr } ->
-      let env' = define name (Value.Fix { env; name; expr }) env in
+      let env' = define name (ref (Value.Fix { env; name; expr })) env in
       let* expr = eval expr env' in
+      v := !expr;
       force expr
 
 let term_def (b : Tast.tm_def) (env : tm_env) :
@@ -138,14 +147,14 @@ let term_def (b : Tast.tm_def) (env : tm_env) :
     (match b with
     | TmDef { expr; _ } ->
         let* value = eval expr env in
-        Ok (value, env))
+        Ok (!value, env))
 
 let defer_term_def (tm_def : Tast.tm_def) (env : tm_env) :
     (Value.t * tm_env, Error.t list) result =
   match tm_def with
   | TmDef { name; expr; _ } ->
       let fixpoint = fix name expr env in
-      let env' = define name fixpoint env in
+      let env' = define name (ref fixpoint) env in
       Ok (fixpoint, env')
 
 let find_entrypoint entrypoint tm_defs : Tast.tm_def option =
@@ -158,7 +167,9 @@ let make_type_constructor ((head, tys) : string * Type.poly) =
 let add_type_constructors (TyDef { alts; _ } : Tast.ty_def) (env : tm_env) :
     tm_env =
   let cons =
-    List.map (fun ((name, _) as alt) -> (name, make_type_constructor alt)) alts
+    List.map
+      (fun ((name, _) as alt) -> (name, ref (make_type_constructor alt)))
+      alts
   in
   let env' = Env.of_list cons in
   Env.union env' env
@@ -187,6 +198,6 @@ let run ?(entrypoint = "main") ?(context = Env.empty) (m : Tast.modu) :
   let open Result.Syntax in
   match (module_ entrypoint) m context with
   | Ok (value, _) ->
-      let* value = Result.map_error (fun e -> [ e ]) (force value) in
-      Ok value
+      let* value = Result.map_error (fun e -> [ e ]) (force (ref value)) in
+      Ok !value
   | Error e -> Error e
