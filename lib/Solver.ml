@@ -751,7 +751,7 @@ module Types = struct
       | EMatch (_, expr, alts) ->
           let expr_vars = free_vars expr in
           let alts_vars =
-            List.fold_left
+            Non_empty.fold_left
               (fun s ((Cst.PCon (_, vars), _), case) ->
                 let vars = List.map (fun (v, _) -> v) vars in
                 let case = free_vars case in
@@ -874,10 +874,9 @@ module Types = struct
 
   and infer_match span expr alts =
     let* expr_t, expr = infer expr in
-    (* TODO: Make use of hd/tl safe.
-             We only parse match-expressions with at least one alternative,
-             but it would be better to avoid potential exceptions. *)
-    let ((_, case_expr) as alt), alts = (List.hd alts, List.tl alts) in
+    let ((_, case_expr) as alt), alts =
+      (Non_empty.hd alts, Non_empty.tl alts)
+    in
     let* alt_t, alt = infer_first_alt ~expr_t ~expr alt in
     let* alts =
       traverse_list

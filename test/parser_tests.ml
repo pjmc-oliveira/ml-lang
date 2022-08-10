@@ -214,19 +214,21 @@ let ast_tests =
             | Wobble -> 0
           end
       }"
-      (Module
-         ( "Hello",
-           [
-             Def
-               ( None,
-                 "hello",
-                 EMatch
-                   ( EVar "foo",
-                     [
-                       (PCon ("Wibble", [ "x"; "y" ]), ELit (Int 1));
-                       (PCon ("Wobble", []), ELit (Int 0));
-                     ] ) );
-           ] ))
+      Ast.(
+        Module
+          ( "Hello",
+            [
+              Def
+                ( None,
+                  "hello",
+                  EMatch
+                    ( EVar "foo",
+                      Non_empty.of_list
+                        [
+                          (PCon ("Wibble", [ "x"; "y" ]), ELit (Int 1));
+                          (PCon ("Wobble", []), ELit (Int 0));
+                        ] ) );
+            ] ))
     (* TODO: Match on Bool *);
     test_parser_ast "type definition"
       "module Hello = {

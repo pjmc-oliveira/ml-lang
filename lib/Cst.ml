@@ -7,7 +7,9 @@ type ty =
   | TArr of Source.Span.t * ty * ty
 [@@deriving show]
 
-type scheme = TMono of ty | TForall of Source.Span.t * string list * ty
+type scheme =
+  | TMono of ty
+  | TForall of Source.Span.t * string list * ty
 [@@deriving show]
 
 let map_ty f = function
@@ -20,7 +22,11 @@ let map_scheme f = function
   | TMono ty -> TMono (map_ty f ty)
   | TForall (x, tvars, ty) -> TForall (f x, tvars, ty)
 
-type lit = Int of int | Bool of bool [@@deriving show]
+type lit =
+  | Int of int
+  | Bool of bool
+[@@deriving show]
+
 type pat = PCon of string spanned * string spanned list [@@deriving show]
 
 type expr =
@@ -31,13 +37,18 @@ type expr =
   | ELam of Source.Span.t * string * ty option * expr
   | EApp of Source.Span.t * expr * expr
   | EAnn of Source.Span.t * expr * ty
-  | EMatch of Source.Span.t * expr * (pat spanned * expr) list
+  | EMatch of Source.Span.t * expr * (pat spanned * expr) Non_empty.t
 [@@deriving show]
 
 type alt = string * ty list [@@deriving show]
 type tm_def = Source.Span.t * string * scheme option * expr [@@deriving show]
 type ty_def = Source.Span.t * string * string list * alt list [@@deriving show]
-type bind = Def of tm_def | Type of ty_def [@@deriving show]
+
+type bind =
+  | Def of tm_def
+  | Type of ty_def
+[@@deriving show]
+
 type modu = Module of Source.Span.t * string * bind list [@@deriving show]
 
 (* Helpers *)
@@ -106,7 +117,7 @@ let rec expr_to_ast (e : expr) : Ast.expr =
       EAnn (expr, ty)
   | EMatch (_, expr, alts) ->
       let expr = expr_to_ast expr in
-      EMatch (expr, List.map pat_to_ast alts)
+      EMatch (expr, Non_empty.map pat_to_ast alts)
 
 and pat_to_ast ((pat, _sp), expr) =
   match pat with

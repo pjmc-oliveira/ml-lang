@@ -94,9 +94,9 @@ module Combinator = struct
   let rec some p =
     let* x = p in
     let* xs = many p in
-    pure (x :: xs)
+    pure (Non_empty.make x xs)
 
-  and many p = alt (try_ (some p)) (pure [])
+  and many p = alt (try_ (map Non_empty.to_list (some p))) (pure [])
 
   let accumulate (p : 'a t) ~(recover : unit t) : 'a list t =
     let rec loop c oks errs s =
@@ -252,7 +252,8 @@ let type_scheme () : Cst.scheme t =
      let* ty = type_ () in
      match ty_vars with
      | None -> pure (fun _ -> Cst.TMono ty)
-     | Some ty_vars -> pure (fun span -> Cst.TForall (span, ty_vars, ty)))
+     | Some ty_vars ->
+         pure (fun span -> Cst.TForall (span, Non_empty.to_list ty_vars, ty)))
 
 let rec expression () : Cst.expr t =
   one_of
