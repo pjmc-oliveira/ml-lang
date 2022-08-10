@@ -433,7 +433,7 @@ module Kinds = struct
       (traverse_list
          (fun ((span, _, _, _) as ty_def) ->
            let* name, kind, alts = infer_ty_def ty_def in
-           pure ((name, kind, alts), Tast.TyDef { span; name; kind; alts }))
+           pure ((name, kind, alts), Tcst.TyDef { span; name; kind; alts }))
          ty_defs)
 
   let check_duplicate_ty_defs (ty_defs : Cst.ty_def list) =
@@ -513,9 +513,9 @@ module Kinds = struct
           let* subst, _cs', _s' = Engine.solve_constraints cs ctx s in
           let ty_defs =
             List.map
-              (fun ((n, k, a), Tast.TyDef { span; name; alts; _ }) ->
+              (fun ((n, k, a), Tcst.TyDef { span; name; alts; _ }) ->
                 let k = Engine.apply subst k in
-                ((n, k, a), Tast.TyDef { span; name; kind = k; alts }))
+                ((n, k, a), Tcst.TyDef { span; name; kind = k; alts }))
               ty_defs
           in
           let ctx' =
@@ -540,7 +540,7 @@ module Kinds = struct
         new_types
     in
     let constructors = Ctx.of_constructors_list new_constructors in
-    let constructors_of_ty_def (TyDef { alts; _ } : Tast.ty_def) = alts in
+    let constructors_of_ty_def (TyDef { alts; _ } : Tcst.ty_def) = alts in
     let constructors_terms =
       Ctx.of_terms_list (List.flatten (List.map constructors_of_ty_def ty_defs))
     in
@@ -765,17 +765,17 @@ module Types = struct
   end
 
   open M
-  open Tast
+  open Tcst
 
   (** Returns a typed AST with its associated type *)
   let with_type expr =
-    let ty = Tast.type_of_expr expr in
+    let ty = Tcst.type_of_expr expr in
     pure (ty, expr)
 
   (* Expressions *)
 
   (** Infers the type of an expression *)
-  let rec infer : Cst.expr -> (Type.mono * Tast.expr) t = function
+  let rec infer : Cst.expr -> (Type.mono * Tcst.expr) t = function
     | ELit (span, Int value) -> with_type (ELit (Int, span, Int value))
     | ELit (span, Bool value) -> with_type (ELit (Bool, span, Bool value))
     | EVar (span, name) -> infer_var span name
@@ -803,20 +803,20 @@ module Types = struct
         (let* def_t, def = infer def in
          Engine.scope name def_t
            (let* body_t, body = infer body in
-            let* _ = Engine.constrain expr_t def_t (span, Tast.get_span def) in
+            let* _ = Engine.constrain expr_t def_t (span, Tcst.get_span def) in
             with_type (ELetRec (body_t, span, name, def, body))))
     else
       let* def_t, def = infer def in
       Engine.scope name def_t
         (let* body_t, body = infer body in
-         let* _ = Engine.constrain expr_t def_t (span, Tast.get_span def) in
+         let* _ = Engine.constrain expr_t def_t (span, Tcst.get_span def) in
          with_type (ELet (body_t, span, name, def, body)))
 
   and infer_if span cond con alt =
     let* cond_t, cond = infer cond in
     let* _ =
       Engine.expect Bool cond_t
-        (Tast.get_span cond (* TODO: Fix this *))
+        (Tcst.get_span cond (* TODO: Fix this *))
         "But if-condition must be Bool"
     in
     let* con_t, con = infer con in
@@ -824,7 +824,7 @@ module Types = struct
     let* _ =
       Engine.constrain con_t alt_t
         ~message:"If branches must have the same type"
-        (Tast.get_span con, Tast.get_span alt)
+        (Tcst.get_span con, Tcst.get_span alt)
     in
     with_type (EIf (con_t, span, cond, con, alt))
 
@@ -840,7 +840,7 @@ module Types = struct
     let* arg_t, arg = infer arg in
     let* _ =
       Engine.constrain_app func_t (arg_t, out_t)
-        (Tast.get_span func, Tast.get_span arg (* TODO: Fix this *))
+        (Tcst.get_span func, Tcst.get_span arg (* TODO: Fix this *))
     in
     with_type (EApp (out_t, span, func, arg))
 
@@ -848,7 +848,7 @@ module Types = struct
     let* ann_t = Resolve.ty ann in
     let* expr_t, expr = infer expr in
     let* _ =
-      Engine.constrain expr_t ann_t (Tast.get_span expr, Cst.span_of_ty ann)
+      Engine.constrain expr_t ann_t (Tcst.get_span expr, Cst.span_of_ty ann)
     in
     with_type expr
 
@@ -887,7 +887,7 @@ module Types = struct
         else
           let head_t = Type.final_type ty in
           let* _ =
-            Engine.constrain expr_t head_t (Tast.get_span expr, h_span)
+            Engine.constrain expr_t head_t (Tcst.get_span expr, h_span)
           in
           let ctx' =
             Ctx.of_terms_list
@@ -895,11 +895,11 @@ module Types = struct
           in
           local (Ctx.union ctx')
             (let* case_t, case = infer case in
-             pure (case_t, (Tast.PCon (head, vars), case)))
+             pure (case_t, (Tcst.PCon (head, vars), case)))
 
   and infer_alt ~expr_t ~expr ~body_t ~span
       ((Cst.PCon ((head, h_span), spanned_vars), p_span), case) :
-      (Type.mono * (Tast.pat * Tast.expr)) t =
+      (Type.mono * (Tcst.pat * Tcst.expr)) t =
     let* ctx = ask in
     let vars, _var_spans = List.unzip spanned_vars in
     match Ctx.lookup head ctx with
@@ -916,7 +916,7 @@ module Types = struct
         else
           let head_t = Type.final_type ty in
           let* _ =
-            Engine.constrain expr_t head_t (Tast.get_span expr, h_span)
+            Engine.constrain expr_t head_t (Tcst.get_span expr, h_span)
           in
           let ctx' =
             Ctx.of_terms_list
@@ -925,15 +925,15 @@ module Types = struct
           local (Ctx.union ctx')
             (let* case_t, case = infer case in
              let* _ =
-               Engine.constrain body_t case_t (span, Tast.get_span case)
+               Engine.constrain body_t case_t (span, Tcst.get_span case)
              in
-             pure (case_t, (Tast.PCon (head, vars), case)))
+             pure (case_t, (Tcst.PCon (head, vars), case)))
 
   (* Secondary checks *)
 
   (** Check if match is exhaustive *)
   let check_match_exhaustiveness ctx :
-      Tast.expr -> (Tast.expr, Error.t list) result =
+      Tcst.expr -> (Tcst.expr, Error.t list) result =
     let not_exhaustive span missing_cons =
       {
         Error.kind = Solver;
@@ -957,11 +957,11 @@ module Types = struct
           ];
       }
     in
-    Tast.fold_expr_result
+    Tcst.fold_expr_result
       (let open Result.Syntax in
       function
       | EMatchF (_, span, expr, alts) as e ->
-          let ty = Tast.type_of_expr expr in
+          let ty = Tcst.type_of_expr expr in
           (* TODO: Sort out error message *)
           let* ty_con = Option.to_result ~none:[] (Type.get_con ty) in
           let* cons =
@@ -969,7 +969,7 @@ module Types = struct
             Option.to_result ~none:[] (Ctx.lookup_constructors ty_con ctx)
           in
           let pats, _ = List.unzip alts in
-          let heads = List.map (fun (Tast.PCon (head, _)) -> head) pats in
+          let heads = List.map (fun (Tcst.PCon (head, _)) -> head) pats in
           let missing_cons =
             List.filter (fun con -> not (List.mem con heads)) cons
           in
@@ -993,13 +993,13 @@ module Types = struct
             if List.length heads > List.length cons then
               Error [ overlapping_patterns span duplicate_heads ]
             else
-              Ok (Tast.expr_f_to_expr e)
-      | e -> Ok (Tast.expr_f_to_expr e))
+              Ok (Tcst.expr_f_to_expr e)
+      | e -> Ok (Tcst.expr_f_to_expr e))
 
   (* Bindings *)
 
   (** Infers the type of a single binding *)
-  let infer_def (def : Cst.tm_def) : Tast.tm_def t =
+  let infer_def (def : Cst.tm_def) : Tcst.tm_def t =
     let* ctx = ask in
     let make_constr name ty sp sp' =
       match Ctx.lookup name ctx with
@@ -1011,23 +1011,23 @@ module Types = struct
     match def with
     | span, name, None, expr ->
         let* expr_t, expr = infer expr in
-        let* _ = make_constr name expr_t (Tast.get_span expr) span in
+        let* _ = make_constr name expr_t (Tcst.get_span expr) span in
         let scheme = Core.generalize expr_t in
-        pure (Tast.TmDef { scheme; span; name; expr })
+        pure (Tcst.TmDef { scheme; span; name; expr })
     | span, name, Some ann, expr ->
         let* ann_t = Resolve.scheme ann in
         let ann_t = Type.get_mono_type ann_t in
         let* expr_t, expr = infer expr in
         let* _ =
           Engine.constrain ann_t expr_t
-            (span (* TODO: Fix this *), Tast.get_span expr)
+            (span (* TODO: Fix this *), Tcst.get_span expr)
         in
-        let* _ = make_constr name expr_t (Tast.get_span expr) span in
+        let* _ = make_constr name expr_t (Tcst.get_span expr) span in
         let scheme = Core.generalize expr_t in
-        pure (Tast.TmDef { scheme; span; name; expr })
+        pure (Tcst.TmDef { scheme; span; name; expr })
 
   (** Infers the types of a bind group *)
-  let infer_defs (defs : Cst.tm_def list) : Tast.tm_def list t =
+  let infer_defs (defs : Cst.tm_def list) : Tcst.tm_def list t =
     let* top_level =
       defs
       |> traverse_list (function _, name, ann, _ ->
@@ -1053,7 +1053,7 @@ module Types = struct
         | Ok (subst, _, _s') ->
             Result.traverse_list
               (function
-                | Tast.TmDef { scheme; span; name; expr } ->
+                | Tcst.TmDef { scheme; span; name; expr } ->
                     let scheme =
                       scheme
                       |> Type.get_mono_type
@@ -1061,11 +1061,11 @@ module Types = struct
                       |> Core.generalize
                     in
                     (* Substitute type, then normalize scheme *)
-                    let expr = Tast.map_type (Core.apply subst) expr in
+                    let expr = Tcst.map_type (Core.apply subst) expr in
                     let subst', scheme = Core.normalize_scheme scheme in
-                    let expr = Tast.map_type (Core.apply subst') expr in
+                    let expr = Tcst.map_type (Core.apply subst') expr in
                     let* expr = check_match_exhaustiveness ctx expr in
-                    Ok (Tast.TmDef { scheme; span; name; expr }))
+                    Ok (Tcst.TmDef { scheme; span; name; expr }))
               defs)
 
   let check_duplicate_defs (tm_defs : Cst.tm_def list) =
@@ -1118,7 +1118,7 @@ module Types = struct
           | Ok bs' ->
               let new_ctx =
                 List.fold_left
-                  (fun ctx (Tast.TmDef { scheme; name; _ } : Tast.tm_def) ->
+                  (fun ctx (Tcst.TmDef { scheme; name; _ } : Tcst.tm_def) ->
                     Ctx.insert name scheme ctx)
                   ctx bs'
               in
@@ -1129,7 +1129,7 @@ module Types = struct
 end
 
 (** Infers the type of a module *)
-let module_ (m : Cst.modu) (ctx : Ctx.t) : (Tast.modu, Error.t list) result =
+let module_ (m : Cst.modu) (ctx : Ctx.t) : (Tcst.modu, Error.t list) result =
   let open Result.Syntax in
   match m with
   | Module (span, name, bindings) ->
@@ -1147,7 +1147,7 @@ let module_ (m : Cst.modu) (ctx : Ctx.t) : (Tast.modu, Error.t list) result =
       (* TODO: Precedence? *)
       let ctx'' = Ctx.union ctx' ctx in
       let* terms = Types.solve_defs ctx'' defs in
-      Ok (Tast.Module { span; name; terms; types })
+      Ok (Tcst.Module { span; name; terms; types })
 
 (** Solves the type of a module *)
 let solve_module (m : Cst.modu) (ctx : Ctx.t) : (Ctx.t, Error.t list) result =
@@ -1156,15 +1156,15 @@ let solve_module (m : Cst.modu) (ctx : Ctx.t) : (Ctx.t, Error.t list) result =
   let insert_type_to_ctx ctx (name, kind) = Ctx.insert_ty name kind ctx in
   let type_of_term tm_def =
     match tm_def with
-    | Tast.TmDef { scheme; name; _ } -> (name, scheme)
+    | Tcst.TmDef { scheme; name; _ } -> (name, scheme)
   in
   let kind_of_type ty_def =
     match ty_def with
-    | Tast.TyDef { name; kind; _ } -> (name, kind)
+    | Tcst.TyDef { name; kind; _ } -> (name, kind)
   in
   let types_of_constructors ty_def =
     match ty_def with
-    | Tast.TyDef { alts; _ } -> alts
+    | Tcst.TyDef { alts; _ } -> alts
   in
   let* m = module_ m ctx in
   match m with
@@ -1176,7 +1176,7 @@ let solve_module (m : Cst.modu) (ctx : Ctx.t) : (Ctx.t, Error.t list) result =
       let ctx = List.fold_left insert_type_to_ctx ctx tys in
       Ok ctx
 
-let module_ (m : Cst.modu) (ctx : Ctx.t) : Tast.modu option * Error.t list =
+let module_ (m : Cst.modu) (ctx : Ctx.t) : Tcst.modu option * Error.t list =
   match module_ m ctx with
   | Ok m -> (Some m, [])
   | Error e -> (None, e)

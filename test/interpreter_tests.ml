@@ -18,6 +18,7 @@ let interpret_module ?(entrypoint = "main") ?(tm_ctx = Env.empty)
     let* tks = Lexer.tokens src in
     let* m = Parser.(parse module_ tks) in
     let* m = Solver.module_ m ty_ctx in
+    let m = Tcst.modu_to_tast m in
     W.pure m
   in
   match m with

@@ -17,10 +17,10 @@ let traverse_list (f : 'a -> 'b t) (ls : 'a list) : 'b list t =
       S.pure (y :: ys))
     ls (S.pure [])
 
-let lookup location name env =
+let lookup name env =
   match Env.lookup name env with
   | Some value -> Ok value
-  | None -> Error (error ~location [ Text ("Unbound variable: " ^ name) ])
+  | None -> failwith ("Impossible: Unbound variable: " ^ name)
 
 let define name value env = Env.insert name value env
 
@@ -33,26 +33,26 @@ let fix name expr env = Value.Fix { env; name; expr }
 let rec eval (e : Tast.expr) (env : tm_env) : (Value.t, Error.t) result =
   let open Result.Syntax in
   match e with
-  | ELit (_, _, Int value) -> Ok (Value.Int value)
-  | ELit (_, _, Bool value) -> Ok (Value.Bool value)
-  | EVar (_, span, name) -> lookup span name env
-  | ELet (_, _, name, def, body) ->
+  | ELit (_, Int value) -> Ok (Value.Int value)
+  | ELit (_, Bool value) -> Ok (Value.Bool value)
+  | EVar (_, name) -> lookup name env
+  | ELet (_, name, def, body) ->
       let thunk = defer def env in
       let env' = define name thunk env in
       eval body env'
-  | ELetRec (_, _, name, def, body) ->
+  | ELetRec (_, name, def, body) ->
       let fixpoint = fix name def env in
       let env' = define name fixpoint env in
       eval body env'
-  | EIf (_, _, cond, con, alt) -> (
+  | EIf (_, cond, con, alt) -> (
       let* cond = eval cond env in
       let* cond = force cond in
       match cond with
       | Bool true -> eval con env
       | Bool false -> eval alt env
       | _ -> failwith ("Impossible if-cond not bool: " ^ Value.show cond))
-  | ELam (_, _, _, param, body) -> Ok (Value.Closure { env; param; body })
-  | EApp (_, _, func, arg) -> (
+  | ELam (_, _, param, body) -> Ok (Value.Closure { env; param; body })
+  | EApp (_, func, arg) -> (
       let arg' = defer arg env in
       let* func = eval func env in
       (* Only evaluate to WHNF so that we can apply the constructor lazily *)
@@ -73,7 +73,7 @@ let rec eval (e : Tast.expr) (env : tm_env) : (Value.t, Error.t) result =
       | _ ->
           failwith ("Imposible cannot apply to non-function: " ^ Value.show func)
       )
-  | EMatch (_, _, expr, alts) -> (
+  | EMatch (_, expr, alts) -> (
       let* expr = eval expr env in
       let* expr = whnf expr in
       match expr with
@@ -165,7 +165,7 @@ let add_type_constructors (TyDef { alts; _ } : Tast.ty_def) (env : tm_env) :
 
 let module_ entrypoint (m : Tast.modu) : Value.t t =
   match m with
-  | Module { span; terms; types; _ } ->
+  | Module { terms; types; _ } ->
       let* env = S.get in
       let env' =
         List.fold_left
@@ -178,11 +178,7 @@ let module_ entrypoint (m : Tast.modu) : Value.t t =
         match find_entrypoint entrypoint terms with
         | Some b -> S.pure b
         | None ->
-            S.fail
-              [
-                error ~location:span
-                  [ Text ("Unbound entrypoint: " ^ entrypoint) ];
-              ]
+            S.fail [ error [ Text ("Unbound entrypoint: " ^ entrypoint) ] ]
       in
       term_def b
 

@@ -41,7 +41,8 @@ let run str =
   let tast =
     let* tks = lex str in
     let* cst = parse tks in
-    let* tast = solve cst in
+    let* tcst = solve cst in
+    let tast = Tcst.modu_to_tast tcst in
     W.pure tast
   in
   match tast with
