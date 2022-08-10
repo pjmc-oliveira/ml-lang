@@ -1,5 +1,9 @@
 open Extensions
 
+(* The environment stores references to values.
+   Whenever a value is forced to NF or WHNF it is updated
+   in the environment.
+   This way a value is evaluated at most once. *)
 type tm_env = Value.t ref Env.t
 
 module S = State_result
