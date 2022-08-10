@@ -718,7 +718,8 @@ let suite =
            [
              [
                Text "Overlapping patterns: Some";
-               Quote { index = 104; line = 4; column = 17; length = 126 };
+               Quote { index = 167; line = 6; column = 21; length = 4 };
+               Quote { index = 199; line = 7; column = 21; length = 4 };
              ];
            ];
        ]

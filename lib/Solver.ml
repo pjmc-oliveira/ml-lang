@@ -84,6 +84,26 @@ module Report = struct
   let duplicate_definition name spans =
     let spans = List.map (fun s -> Error.Line.Quote s) spans in
     error ([ Error.Line.Text ("Duplicate definitions of: " ^ name) ] @ spans)
+
+  let overlapping_patterns cons spans =
+    let quotes = List.map (fun sp -> Error.Line.Quote sp) spans in
+    {
+      Error.kind = Solver;
+      location = None;
+      lines = [ Error.Line.Text ("Overlapping patterns: " ^ cons) ] @ quotes;
+    }
+
+  let match_not_exhaustive span missing_cons =
+    {
+      Error.kind = Solver;
+      location = Some span;
+      lines =
+        [
+          Text "Match not exhaustive";
+          Quote span;
+          Text ("Missing patterns: " ^ String.concat ", " missing_cons);
+        ];
+    }
 end
 
 module type Monad = sig
@@ -878,11 +898,11 @@ module Types = struct
     | Some scheme ->
         let* ty = Engine.instantiate scheme in
         let arity = Type.get_arity ty in
-        if not (arity = List.length vars) then
+        if not (arity = List.length spanned_vars) then
           fail
             [
               Report.constructor_arity_mismatch p_span head arity
-                (List.length vars);
+                (List.length spanned_vars);
             ]
         else
           let head_t = Type.final_type ty in
@@ -895,7 +915,7 @@ module Types = struct
           in
           local (Ctx.union ctx')
             (let* case_t, case = infer case in
-             pure (case_t, (Tcst.PCon (head, vars), case)))
+             pure (case_t, (Tcst.PCon ((head, h_span), spanned_vars), case)))
 
   and infer_alt ~expr_t ~expr ~body_t ~span
       ((Cst.PCon ((head, h_span), spanned_vars), p_span), case) :
@@ -927,36 +947,13 @@ module Types = struct
              let* _ =
                Engine.constrain body_t case_t (span, Tcst.get_span case)
              in
-             pure (case_t, (Tcst.PCon (head, vars), case)))
+             pure (case_t, (Tcst.PCon ((head, h_span), spanned_vars), case)))
 
   (* Secondary checks *)
 
   (** Check if match is exhaustive *)
   let check_match_exhaustiveness ctx :
       Tcst.expr -> (Tcst.expr, Error.t list) result =
-    let not_exhaustive span missing_cons =
-      {
-        Error.kind = Solver;
-        location = Some span;
-        lines =
-          [
-            Text "Match not exhaustive";
-            Quote span;
-            Text ("Missing patterns: " ^ String.concat ", " missing_cons);
-          ];
-      }
-    in
-    let overlapping_patterns span overlaps =
-      {
-        Error.kind = Solver;
-        location = Some span;
-        lines =
-          [
-            Text ("Overlapping patterns: " ^ String.concat ", " overlaps);
-            Quote span;
-          ];
-      }
-    in
     Tcst.fold_expr_result
       (let open Result.Syntax in
       function
@@ -969,29 +966,34 @@ module Types = struct
             Option.to_result ~none:[] (Ctx.lookup_constructors ty_con ctx)
           in
           let pats, _ = List.unzip alts in
-          let heads = List.map (fun (Tcst.PCon (head, _)) -> head) pats in
+          let spanned_heads =
+            List.map (fun (Tcst.PCon (head, _)) -> head) pats
+          in
+          let heads = List.map (fun (head, _) -> head) spanned_heads in
           let missing_cons =
             List.filter (fun con -> not (List.mem con heads)) cons
           in
           if List.length missing_cons > 0 then
-            Error [ not_exhaustive span missing_cons ]
+            Error [ Report.match_not_exhaustive span missing_cons ]
           else
             let duplicate_heads =
               List.fold_left
-                (fun m h ->
+                (fun m (h, sp) ->
                   Str_map.add h
-                    (Option.fold ~none:1
-                       ~some:(fun n -> n + 1)
+                    (Option.fold ~none:[ sp ]
+                       ~some:(fun sps -> sps @ [ sp ])
                        (Str_map.find_opt h m))
                     m)
-                Str_map.empty heads
+                Str_map.empty spanned_heads
               |> Str_map.to_seq
               |> List.of_seq
-              |> List.filter (fun (_, n) -> n > 1)
-              |> List.map (fun (h, _) -> h)
+              |> List.filter (fun (_, sps) -> List.length sps > 1)
             in
             if List.length heads > List.length cons then
-              Error [ overlapping_patterns span duplicate_heads ]
+              Error
+                (List.map
+                   (fun (head, spans) -> Report.overlapping_patterns head spans)
+                   duplicate_heads)
             else
               Ok (Tcst.expr_f_to_expr e)
       | e -> Ok (Tcst.expr_f_to_expr e))

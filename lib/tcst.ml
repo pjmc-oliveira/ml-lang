@@ -1,11 +1,13 @@
 open Extensions
 
+type 'a spanned = 'a * Source.Span.t [@@deriving show]
+
 type lit =
   | Int of int
   | Bool of bool
 [@@deriving show]
 
-type pat = PCon of string * string list [@@deriving show]
+type pat = PCon of string spanned * string spanned list [@@deriving show]
 
 type expr =
   | ELit of Type.mono * Source.Span.t * lit
@@ -180,7 +182,7 @@ let lit_to_tast : lit -> Tast.lit = function
   | Bool x -> Tast.Bool x
 
 let pat_to_tast : pat -> Tast.pat = function
-  | PCon (head, vars) -> Tast.PCon (head, vars)
+  | PCon ((head, _), vars) -> Tast.PCon (head, List.map (fun (v, _) -> v) vars)
 
 let expr_to_tast : expr -> Tast.expr =
   fold_expr (function
