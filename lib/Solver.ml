@@ -874,49 +874,18 @@ module Types = struct
 
   and infer_match span expr alts =
     let* expr_t, expr = infer expr in
-    let ((_, case_expr) as alt), alts =
-      (Non_empty.hd alts, Non_empty.tl alts)
+    let ((_, alt_expr) as alt), alts = (Non_empty.hd alts, Non_empty.tl alts) in
+    let* alt_t, alt = infer_alt ~expr_t ~expr alt in
+    (* Constrains each case to match the type of the first alternative *)
+    let case_constrain case_t case_sp =
+      Engine.constrain alt_t case_t (Cst.span_of_expr alt_expr, case_sp)
     in
-    let* alt_t, alt = infer_first_alt ~expr_t ~expr alt in
-    let* alts =
-      traverse_list
-        (infer_alt ~expr_t ~expr ~body_t:alt_t
-           ~span:(Cst.span_of_expr case_expr))
-        alts
-    in
+    let* alts = traverse_list (infer_alt ~expr_t ~expr ~case_constrain) alts in
     let _, alts = List.unzip alts in
     with_type (EMatch (alt_t, span, expr, alt :: alts))
 
-  (* TODO: clean up infer_first_alt/infer_alt *)
-  and infer_first_alt ~expr_t ~expr
-      ((Cst.PCon ((head, h_span), spanned_vars), p_span), case) =
-    let* ctx = ask in
-    let vars, _var_spans = List.unzip spanned_vars in
-    match Ctx.lookup head ctx with
-    | None -> fail [ Report.unbound_constructor head h_span ]
-    | Some scheme ->
-        let* ty = Engine.instantiate scheme in
-        let arity = Type.get_arity ty in
-        if not (arity = List.length spanned_vars) then
-          fail
-            [
-              Report.constructor_arity_mismatch p_span head arity
-                (List.length spanned_vars);
-            ]
-        else
-          let head_t = Type.final_type ty in
-          let* _ =
-            Engine.constrain expr_t head_t (Tcst.get_span expr, h_span)
-          in
-          let ctx' =
-            Ctx.of_terms_list
-              (List.zip vars (List.map Type.mono (Type.split_arrow ty)))
-          in
-          local (Ctx.union ctx')
-            (let* case_t, case = infer case in
-             pure (case_t, (Tcst.PCon ((head, h_span), spanned_vars), case)))
-
-  and infer_alt ~expr_t ~expr ~body_t ~span
+  and infer_alt ~expr_t ~expr
+      ?(case_constrain = fun _case_t _case_sp -> pure ())
       ((Cst.PCon ((head, h_span), spanned_vars), p_span), case) :
       (Type.mono * (Tcst.pat * Tcst.expr)) t =
     let* ctx = ask in
@@ -943,9 +912,7 @@ module Types = struct
           in
           local (Ctx.union ctx')
             (let* case_t, case = infer case in
-             let* _ =
-               Engine.constrain body_t case_t (span, Tcst.get_span case)
-             in
+             let* _ = case_constrain case_t (Tcst.get_span case) in
              pure (case_t, (Tcst.PCon ((head, h_span), spanned_vars), case)))
 
   (* Secondary checks *)

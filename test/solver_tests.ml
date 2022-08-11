@@ -722,4 +722,22 @@ let suite =
                Quote { index = 199; line = 7; column = 21; length = 4 };
              ];
            ];
+         test_failure "match-expression with mismatch branch types"
+           "module Hello = {
+              type Maybe a = None | Some a
+              def main = \\m
+                match m with
+                  | None -> 1
+                  | Some x -> True
+                end
+            }"
+           [
+             [
+               Text "Cannot solve constraint: Int = Bool";
+               Text "Got Int from:";
+               Quote { index = 145; line = 5; column = 29; length = 1 };
+               Text "And Bool from:";
+               Quote { index = 177; line = 6; column = 31; length = 4 };
+             ];
+           ];
        ]
