@@ -29,14 +29,13 @@ let defer (expr : Tast.expr) (env : tm_env) : Value.t =
 let fix name expr env = Value.Fix { env; name; expr }
 
 (** Evaluate an expression in a context *)
-let rec eval (e : Tast.expr) (env : tm_env) : (Value.t ref, Error.t) result =
-  let open Result.Syntax in
+let rec eval (e : Tast.expr) (env : tm_env) : Value.t ref =
   match e with
-  | ELit (_, Int value) -> Ok (ref (Value.Int value))
-  | ELit (_, Bool value) -> Ok (ref (Value.Bool value))
+  | ELit (_, Int value) -> ref (Value.Int value)
+  | ELit (_, Bool value) -> ref (Value.Bool value)
   | EVar (_, name) -> (
       match Env.lookup name env with
-      | Some value -> Ok value
+      | Some value -> value
       | None -> failwith ("Impossible: Unbound variable: " ^ name))
   | ELet (_, name, def, body) ->
       let thunk = defer def env in
@@ -47,37 +46,37 @@ let rec eval (e : Tast.expr) (env : tm_env) : (Value.t ref, Error.t) result =
       let env' = define name (ref fixpoint) env in
       eval body env'
   | EIf (_, cond, con, alt) -> (
-      let* cond = eval cond env in
-      let* cond = force cond in
+      let cond = eval cond env in
+      let cond = force cond in
       match !cond with
       | Bool true -> eval con env
       | Bool false -> eval alt env
       | _ -> failwith ("Impossible if-cond not bool: " ^ Value.show !cond))
-  | ELam (_, _, param, body) -> Ok (ref (Value.Closure { env; param; body }))
+  | ELam (_, _, param, body) -> ref (Value.Closure { env; param; body })
   | EApp (_, func, arg) -> (
       let arg' = defer arg env in
-      let* func = eval func env in
+      let func = eval func env in
       (* Only evaluate to WHNF so that we can apply the constructor lazily *)
-      let* func = whnf func in
+      let func = whnf func in
       match !func with
       | Closure { env = closure_ctx; param; body } ->
           let closure_ctx' = define param (ref arg') closure_ctx in
           eval body closure_ctx'
       | Con { head; arity; tail } ->
           (* TODO: there has to be a better way to deal with constructors *)
-          Ok (ref (Value.Con { head; arity; tail = tail @ [ ref arg' ] }))
+          ref (Value.Con { head; arity; tail = tail @ [ ref arg' ] })
       | Native func ->
           (* Defer to create a thunk value from the ast
              then force to pass it into the native function *)
           let arg = defer arg env in
-          let* arg = force (ref arg) in
-          Ok (ref (func !arg))
+          let arg = force (ref arg) in
+          ref (func !arg)
       | _ ->
           failwith
             ("Imposible cannot apply to non-function: " ^ Value.show !func))
   | EMatch (_, expr, alts) -> (
-      let* expr = eval expr env in
-      let* expr = whnf expr in
+      let expr = eval expr env in
+      let expr = whnf expr in
       match !expr with
       | Con { head; tail; _ } -> (
           match
@@ -96,61 +95,58 @@ let rec eval (e : Tast.expr) (env : tm_env) : (Value.t ref, Error.t) result =
             ("Impossible cannot match to non-constructor: " ^ Value.show !expr))
 
 (** Force a value to weak-head normal form *)
-and whnf (v : Value.t ref) : (Value.t ref, Error.t) result =
-  let open Result.Syntax in
+and whnf (v : Value.t ref) : Value.t ref =
   match !v with
-  | Int n -> Ok (ref (Value.Int n))
-  | Bool b -> Ok (ref (Value.Bool b))
-  | Con { head; arity; tail } -> Ok (ref (Value.Con { head; arity; tail }))
-  | Closure f -> Ok (ref (Value.Closure f))
+  | Int n -> ref (Value.Int n)
+  | Bool b -> ref (Value.Bool b)
+  | Con { head; arity; tail } -> ref (Value.Con { head; arity; tail })
+  | Closure f -> ref (Value.Closure f)
   | Thunk { env; expr } ->
-      let* expr = eval expr env in
+      let expr = eval expr env in
       v := !expr;
       whnf expr
-  | Native _ -> Ok v
+  | Native _ -> v
   | Fix { env; name; expr } ->
       let env' = define name (ref (Value.Fix { env; name; expr })) env in
-      let* expr = eval expr env' in
+      let expr = eval expr env' in
       v := !expr;
       (* TODO: should this be a recursive or base call? *)
       whnf expr
 
 (** Fully force a value to its normal form *)
-and force (v : Value.t ref) : (Value.t ref, Error.t) result =
-  let open Result.Syntax in
+and force (v : Value.t ref) : Value.t ref =
   match !v with
-  | Int n -> Ok (ref (Value.Int n))
-  | Bool b -> Ok (ref (Value.Bool b))
+  | Int n -> ref (Value.Int n)
+  | Bool b -> ref (Value.Bool b)
   | Con { head; arity; tail } ->
-      let* tail =
-        Result.traverse_list
+      let tail =
+        List.map
           (fun v ->
-            let* v' = force v in
+            let v' = force v in
             v := !v';
-            Ok v')
+            v')
           tail
       in
-      Ok (ref (Value.Con { head; arity; tail }))
-  | Closure f -> Ok (ref (Value.Closure f))
+      ref (Value.Con { head; arity; tail })
+  | Closure f -> ref (Value.Closure f)
   | Thunk { env; expr } ->
-      let* expr = eval expr env in
+      let expr = eval expr env in
       v := !expr;
       force expr
-  | Native _ -> Ok v
+  | Native _ -> v
   | Fix { env; name; expr } ->
       let env' = define name (ref (Value.Fix { env; name; expr })) env in
-      let* expr = eval expr env' in
+      let expr = eval expr env' in
       v := !expr;
       force expr
 
 let term_def (b : Tast.tm_def) (env : tm_env) :
     (Value.t * tm_env, Error.t list) result =
-  let open Result.Syntax in
   Result.map_error
     (fun e -> [ e ])
     (match b with
     | TmDef { expr; _ } ->
-        let* value = eval expr env in
+        let value = eval expr env in
         Ok (!value, env))
 
 let defer_term_def (tm_def : Tast.tm_def) (env : tm_env) :
@@ -199,9 +195,8 @@ let module_ entrypoint (m : Tast.modu) : Value.t t =
 
 let run ?(entrypoint = "main") ?(context = Env.empty) (m : Tast.modu) :
     (Value.t, Error.t list) result =
-  let open Result.Syntax in
   match (module_ entrypoint) m context with
   | Ok (value, _) ->
-      let* value = Result.map_error (fun e -> [ e ]) (force (ref value)) in
+      let value = force (ref value) in
       Ok !value
   | Error e -> Error e
