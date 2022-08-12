@@ -9,6 +9,7 @@ type tm_env = Value.t ref Env.t
 module S = State_result
 open State_result.Syntax
 
+(* TODO: Is this needed? *)
 type 'a t = ('a, tm_env, Error.t list) State_result.t
 
 let error ?location lines : Error.t = { kind = Interpreter; lines; location }
@@ -66,14 +67,16 @@ let rec eval (e : Tast.expr) (env : tm_env) : Value.t ref =
           (* TODO: there has to be a better way to deal with constructors *)
           ref (Value.Con { head; arity; tail = tail @ [ ref arg' ] })
       | Native func ->
+          (* TODO: Why not eval then force? *)
           (* Defer to create a thunk value from the ast
              then force to pass it into the native function *)
+          (* TODO: Did we not already defer arg? *)
           let arg = defer arg env in
           let arg = force (ref arg) in
           ref (func !arg)
       | _ ->
           failwith
-            ("Imposible cannot apply to non-function: " ^ Value.show !func))
+            ("Impossible cannot apply to non-function: " ^ Value.show !func))
   | EMatch (_, expr, alts) -> (
       let expr = eval expr env in
       let expr = whnf expr in
@@ -96,6 +99,8 @@ let rec eval (e : Tast.expr) (env : tm_env) : Value.t ref =
 
 (** Force a value to weak-head normal form *)
 and whnf (v : Value.t ref) : Value.t ref =
+  (* TODO: Do we need to re-allocate the return values?
+           Or can we just return the original reference? *)
   match !v with
   | Int n -> ref (Value.Int n)
   | Bool b -> ref (Value.Bool b)
@@ -115,6 +120,8 @@ and whnf (v : Value.t ref) : Value.t ref =
 
 (** Fully force a value to its normal form *)
 and force (v : Value.t ref) : Value.t ref =
+  (* TODO: Do we need to re-allocate the return values?
+           Or can we just return the original reference? *)
   match !v with
   | Int n -> ref (Value.Int n)
   | Bool b -> ref (Value.Bool b)
@@ -189,6 +196,7 @@ let module_ entrypoint (m : Tast.modu) : Value.t t =
         match find_entrypoint entrypoint terms with
         | Some b -> S.pure b
         | None ->
+            (* TODO: Solver should check entrypoint *)
             S.fail [ error [ Text ("Unbound entrypoint: " ^ entrypoint) ] ]
       in
       term_def b
