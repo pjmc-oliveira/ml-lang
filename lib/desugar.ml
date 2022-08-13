@@ -1,14 +1,14 @@
 module Tcst = Syn.Tcst
 
 (** Desugars a Tcst pattern to Tast pattern *)
-let pattern : Tcst.Pat.t -> Tast.pat = function
+let pattern : Tcst.Pat.t -> Ir.pat = function
   | Tcst.Pat.Con (_, (head, _), vars) ->
       PCon (head, List.map (fun (var, _) -> var) vars)
 
 (** Desugars a Tcst expression to Tast expression *)
-let expression : Tcst.Expr.t -> Tast.expr =
+let expression : Tcst.Expr.t -> Ir.expr =
   Tcst.Expr.fold (function
-    | LitF ((_, ty), Int (_, n)) -> Tast.ELit (ty, Int n)
+    | LitF ((_, ty), Int (_, n)) -> Ir.ELit (ty, Int n)
     | LitF ((_, ty), Bool (_, b)) -> ELit (ty, Bool b)
     | VarF ((_, ty), s) -> EVar (ty, s)
     | LetF ((_, ty), n, _, d, b) -> ELet (ty, n, d, b)
@@ -22,21 +22,21 @@ let expression : Tcst.Expr.t -> Tast.expr =
         EMatch (ty, e, bs))
 
 (** Desugars a Tcst ty_def to Tast ty_def *)
-let ty : Tcst.Binding.ty_def -> Tast.ty_def = function
+let ty : Tcst.Binding.ty_def -> Ir.ty_def = function
   | (_, kind, alts), name, _, _ -> TyDef { name; kind; alts }
 
 (** Desugars a Tcst tm_def to Tast tm_def *)
-let tm : Tcst.Binding.tm_def -> Tast.tm_def = function
+let tm : Tcst.Binding.tm_def -> Ir.tm_def = function
   | (_, scheme), name, _, e -> TmDef { name; scheme; expr = expression e }
 
 (** Desugars a Tcst binding to Tast binding *)
-let binding : Tcst.Binding.t -> [ `Type of Tast.ty_def | `Term of Tast.tm_def ]
-    = function
+let binding : Tcst.Binding.t -> [ `Type of Ir.ty_def | `Term of Ir.tm_def ] =
+  function
   | Def def -> `Term (tm def)
   | Type def -> `Type (ty def)
 
 (** Desugars a Tcst module to Tast module *)
-let module_ : Tcst.Module.t -> Tast.modu = function
+let module_ : Tcst.Module.t -> Ir.modu = function
   | Module (_, name, bindings) ->
       let bindings = List.map binding bindings in
       let rec partition tys tms = function
@@ -45,4 +45,4 @@ let module_ : Tcst.Module.t -> Tast.modu = function
         | `Type ty :: bs -> partition (ty :: tys) tms bs
       in
       let types, terms = partition [] [] bindings in
-      Tast.Module { name; types; terms }
+      Ir.Module { name; types; terms }

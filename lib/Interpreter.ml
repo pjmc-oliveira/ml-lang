@@ -23,21 +23,18 @@ let traverse_list (f : 'a -> 'b t) (ls : 'a list) : 'b list t =
     ls (S.pure [])
 
 let define name value env = Env.insert name value env
-
-let defer (expr : Tast.expr) (env : tm_env) : Value.t =
-  Value.Thunk { env; expr }
-
+let defer (expr : Ir.expr) (env : tm_env) : Value.t = Value.Thunk { env; expr }
 let fix name expr env = Value.Fix { env; name; expr }
 
 (** Evaluate an expression in a context *)
-let rec eval (e : Tast.expr) (env : tm_env) : Value.t ref =
+let rec eval (e : Ir.expr) (env : tm_env) : Value.t ref =
   match e with
   | ELit (_, Int value) -> ref (Value.Int value)
   | ELit (_, Bool value) -> ref (Value.Bool value)
   | EVar (_, name) -> (
       match Env.lookup name env with
       | Some value -> value
-      | None -> failwith ("Impossible: Unbound variable: " ^ name))
+      | None -> failwith ("Impossible unbound variable: " ^ name))
   | ELet (_, name, def, body) ->
       let thunk = defer def env in
       let env' = define name (ref thunk) env in
@@ -83,7 +80,7 @@ let rec eval (e : Tast.expr) (env : tm_env) : Value.t ref =
       match !expr with
       | Con { head; tail; _ } -> (
           match
-            List.find_opt (fun (Tast.PCon (name, _), _) -> name = head) alts
+            List.find_opt (fun (Ir.PCon (name, _), _) -> name = head) alts
           with
           | None -> failwith ("Un-matched pattern: " ^ Value.show !expr)
           | Some (PCon (_, vars), case) ->
@@ -147,7 +144,7 @@ and force (v : Value.t ref) : Value.t ref =
       v := !expr;
       force expr
 
-let term_def (b : Tast.tm_def) (env : tm_env) :
+let term_def (b : Ir.tm_def) (env : tm_env) :
     (Value.t * tm_env, Error.t list) result =
   Result.map_error
     (fun e -> [ e ])
@@ -156,7 +153,7 @@ let term_def (b : Tast.tm_def) (env : tm_env) :
         let value = eval expr env in
         Ok (!value, env))
 
-let defer_term_def (tm_def : Tast.tm_def) (env : tm_env) :
+let defer_term_def (tm_def : Ir.tm_def) (env : tm_env) :
     (Value.t * tm_env, Error.t list) result =
   match tm_def with
   | TmDef { name; expr; _ } ->
@@ -164,14 +161,14 @@ let defer_term_def (tm_def : Tast.tm_def) (env : tm_env) :
       let env' = define name (ref fixpoint) env in
       Ok (fixpoint, env')
 
-let find_entrypoint entrypoint tm_defs : Tast.tm_def option =
-  List.find_opt (fun (Tast.TmDef { name; _ }) -> name = entrypoint) tm_defs
+let find_entrypoint entrypoint tm_defs : Ir.tm_def option =
+  List.find_opt (fun (Ir.TmDef { name; _ }) -> name = entrypoint) tm_defs
 
 let make_type_constructor ((head, tys) : string * Type.poly) =
   let arity = Type.get_arity (Type.get_mono_type tys) in
   Value.Con { head; arity; tail = [] }
 
-let add_type_constructors (TyDef { alts; _ } : Tast.ty_def) (env : tm_env) :
+let add_type_constructors (TyDef { alts; _ } : Ir.ty_def) (env : tm_env) :
     tm_env =
   let cons =
     List.map
@@ -181,7 +178,7 @@ let add_type_constructors (TyDef { alts; _ } : Tast.ty_def) (env : tm_env) :
   let env' = Env.of_list cons in
   Env.union env' env
 
-let module_ entrypoint (m : Tast.modu) : Value.t t =
+let module_ entrypoint (m : Ir.modu) : Value.t t =
   match m with
   | Module { terms; types; _ } ->
       let* env = S.get in
@@ -201,8 +198,9 @@ let module_ entrypoint (m : Tast.modu) : Value.t t =
       in
       term_def b
 
-let run ?(entrypoint = "main") ?(context = Env.empty) (m : Tast.modu) :
+let run ?(entrypoint = "main") ?(context = Env.empty) (m : Ir.modu) :
     (Value.t, Error.t list) result =
+  (* TODO: Create custom exception, and catch it here to return a result *)
   match (module_ entrypoint) m context with
   | Ok (value, _) ->
       let value = force (ref value) in

@@ -10,17 +10,17 @@ type t =
   | Closure of {
       env : t ref Env.t;
       param : string;
-      body : Tast.expr;
+      body : Ir.expr;
     }
   | Thunk of {
       env : t ref Env.t;
-      expr : Tast.expr;
+      expr : Ir.expr;
     }
   | Native of (t -> t)
   | Fix of {
       env : t ref Env.t;
       name : string;
-      expr : Tast.expr;
+      expr : Ir.expr;
     }
 
 let rec show = function
