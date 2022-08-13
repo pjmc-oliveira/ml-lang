@@ -1,6 +1,8 @@
 open OUnit2
 open Ml_lang
 open Extensions
+module Cst = Syn.Cst
+module Ast = Syn.Ast
 
 module W = Writer_option.Make (struct
   type t = Error.t list
@@ -20,7 +22,7 @@ let parse_module str =
 let string_of_cst_result src (r, e) =
   (* TODO: Print errors if present *)
   match r with
-  | Some m -> "Some " ^ Cst.show_modu m
+  | Some m -> "Some " ^ Cst.Module.show m
   | None -> "None " ^ String.concat "\n" (List.map (Error.to_string src) e)
 
 let test_parser_cst label str cst =
@@ -31,13 +33,13 @@ let test_parser_cst label str cst =
 let string_of_ast_result src (r, e) =
   (* TODO: Print errors if present *)
   match r with
-  | Some m -> "Ok " ^ Ast.show_modu m
+  | Some m -> "Ok " ^ Ast.Module.show m
   | None -> "Error " ^ String.concat "\n" (List.map (Error.to_string src) e)
 
 let test_parser_ast label str ast =
   label >:: fun _ ->
   assert_equal (Some ast, [])
-    (W.map Cst.to_ast (parse_module str))
+    (W.map Syn.cst_to_ast (parse_module str))
     ~printer:(string_of_ast_result (Source.of_string str))
 
 let cst_tests =
@@ -54,7 +56,10 @@ let cst_tests =
                ( { index = 17; line = 1; column = 18; length = 13 },
                  "hello",
                  None,
-                 ELit ({ index = 29; line = 1; column = 30; length = 1 }, Int 1)
+                 Expr.Lit
+                   ( { index = 29; line = 1; column = 30; length = 1 },
+                     Lit.Int
+                       ({ index = 29; line = 1; column = 30; length = 1 }, 1) )
                );
            ] ));
     test_parser_cst "two definitions"
@@ -67,144 +72,286 @@ let cst_tests =
                ( { index = 17; line = 1; column = 18; length = 13 },
                  "hello",
                  None,
-                 ELit ({ index = 29; line = 1; column = 30; length = 1 }, Int 1)
+                 Expr.Lit
+                   ( { index = 29; line = 1; column = 30; length = 1 },
+                     Lit.Int
+                       ({ index = 29; line = 1; column = 30; length = 1 }, 1) )
                );
              Def
                ( { index = 31; line = 1; column = 32; length = 11 },
                  "bye",
                  None,
-                 ELit ({ index = 41; line = 1; column = 42; length = 1 }, Int 2)
+                 Expr.Lit
+                   ( { index = 41; line = 1; column = 42; length = 1 },
+                     Lit.Int
+                       ({ index = 41; line = 1; column = 42; length = 1 }, 2) )
                );
            ] ));
   ]
 
 let ast_tests =
+  let open Ast in
   [
-    test_parser_ast "empty module" "module Hello = {}" (Module ("Hello", []));
+    test_parser_ast "empty module" "module Hello = {}"
+      (Module ((), "Hello", []));
     test_parser_ast "one definition" "module Hello = { def hello = 1 }"
-      (Module ("Hello", [ Def (None, "hello", ELit (Int 1)) ]));
+      (Module
+         ((), "Hello", [ Def ((), "hello", None, Expr.Lit ((), Int ((), 1))) ]));
     test_parser_ast "True literal" "module Hello = { def hello = True }"
-      (Module ("Hello", [ Def (None, "hello", ELit (Bool true)) ]));
+      (Module
+         ( (),
+           "Hello",
+           [ Def ((), "hello", None, Expr.Lit ((), Bool ((), true))) ] ));
     test_parser_ast "True literal" "module Hello = { def hello = False }"
-      (Module ("Hello", [ Def (None, "hello", ELit (Bool false)) ]));
+      (Module
+         ( (),
+           "Hello",
+           [ Def ((), "hello", None, Expr.Lit ((), Bool ((), false))) ] ));
     test_parser_ast "type annotated expression"
       "module Hello = { def hello = 1 : Int }"
-      (Module ("Hello", [ Def (None, "hello", EAnn (ELit (Int 1), TCon "Int")) ]));
+      (Module
+         ( (),
+           "Hello",
+           [
+             Def
+               ( (),
+                 "hello",
+                 None,
+                 Expr.Ann ((), Expr.Lit ((), Int ((), 1)), Type.Con ((), "Int"))
+               );
+           ] ));
     test_parser_ast "parenthesized expression"
       "module Hello = { def hello = if (let x = True in x) then 1 else 2 }"
       (Module
-         ( "Hello",
+         ( (),
+           "Hello",
            [
              Def
-               ( None,
+               ( (),
                  "hello",
-                 EIf
-                   ( ELet ("x", None, ELit (Bool true), EVar "x"),
-                     ELit (Int 1),
-                     ELit (Int 2) ) );
+                 None,
+                 Expr.If
+                   ( (),
+                     Expr.Let
+                       ( (),
+                         "x",
+                         None,
+                         Expr.Lit ((), Bool ((), true)),
+                         Expr.Var ((), "x") ),
+                     Expr.Lit ((), Int ((), 1)),
+                     Expr.Lit ((), Int ((), 2)) ) );
            ] ));
     test_parser_ast "two definitions"
       "module Hello = { def hello = 1 def bye = hello }"
       (Module
-         ( "Hello",
+         ( (),
+           "Hello",
            [
-             Def (None, "hello", ELit (Int 1)); Def (None, "bye", EVar "hello");
+             Def ((), "hello", None, Expr.Lit ((), Int ((), 1)));
+             Def ((), "bye", None, Expr.Var ((), "hello"));
            ] ));
     test_parser_ast "let expression"
       "module Hello = { def hello = let x = 1 in x }"
       (Module
-         ( "Hello",
-           [ Def (None, "hello", ELet ("x", None, ELit (Int 1), EVar "x")) ] ));
+         ( (),
+           "Hello",
+           [
+             Def
+               ( (),
+                 "hello",
+                 None,
+                 Expr.Let
+                   ( (),
+                     "x",
+                     None,
+                     Expr.Lit ((), Int ((), 1)),
+                     Expr.Var ((), "x") ) );
+           ] ));
     test_parser_ast "if expression"
       "module Hello = { def hello = if True then 1 else x }"
       (Module
-         ( "Hello",
+         ( (),
+           "Hello",
            [
-             Def (None, "hello", EIf (ELit (Bool true), ELit (Int 1), EVar "x"));
+             Def
+               ( (),
+                 "hello",
+                 None,
+                 Expr.If
+                   ( (),
+                     Expr.Lit ((), Bool ((), true)),
+                     Expr.Lit ((), Int ((), 1)),
+                     Expr.Var ((), "x") ) );
            ] ));
     test_parser_ast "lambda expression with annotated parameter"
       "module Hello = { def hello = \\x : Int. x }"
       (Module
-         ( "Hello",
-           [ Def (None, "hello", ELam ("x", Some (TCon "Int"), EVar "x")) ] ));
+         ( (),
+           "Hello",
+           [
+             Def
+               ( (),
+                 "hello",
+                 None,
+                 Expr.Lam
+                   ((), "x", Some (Type.Con ((), "Int")), Expr.Var ((), "x")) );
+           ] ));
     test_parser_ast "lambda expression" "module Hello = { def hello = \\x x }"
-      (Module ("Hello", [ Def (None, "hello", ELam ("x", None, EVar "x")) ]));
+      (Module
+         ( (),
+           "Hello",
+           [
+             Def
+               ((), "hello", None, Expr.Lam ((), "x", None, Expr.Var ((), "x")));
+           ] ));
     test_parser_ast "lambda expression annotated as a whole"
       "module Hello = { def hello = (\\x x) : Int -> Int }"
       (Module
-         ( "Hello",
+         ( (),
+           "Hello",
            [
              Def
-               ( None,
+               ( (),
                  "hello",
-                 EAnn (ELam ("x", None, EVar "x"), TArr (TCon "Int", TCon "Int"))
-               );
+                 None,
+                 Expr.Ann
+                   ( (),
+                     Expr.Lam ((), "x", None, Expr.Var ((), "x")),
+                     Type.Arr ((), Type.Con ((), "Int"), Type.Con ((), "Int"))
+                   ) );
            ] ));
     test_parser_ast "function application"
       "module Hello = { def hello = f x y z }"
       (Module
-         ( "Hello",
+         ( (),
+           "Hello",
            [
              Def
-               ( None,
+               ( (),
                  "hello",
-                 EApp (EApp (EApp (EVar "f", EVar "x"), EVar "y"), EVar "z") );
+                 None,
+                 Expr.App
+                   ( (),
+                     Expr.App
+                       ( (),
+                         Expr.App ((), Expr.Var ((), "f"), Expr.Var ((), "x")),
+                         Expr.Var ((), "y") ),
+                     Expr.Var ((), "z") ) );
            ] ));
     test_parser_ast "function application"
       "module Hello = { def hello = f (g x) }"
       (Module
-         ( "Hello",
-           [ Def (None, "hello", EApp (EVar "f", EApp (EVar "g", EVar "x"))) ]
-         ));
+         ( (),
+           "Hello",
+           [
+             Def
+               ( (),
+                 "hello",
+                 None,
+                 Expr.App
+                   ( (),
+                     Expr.Var ((), "f"),
+                     Expr.App ((), Expr.Var ((), "g"), Expr.Var ((), "x")) ) );
+           ] ));
     test_parser_ast "top level type annotation"
       "module Hello = { def hello : Bool = True }"
       (Module
-         ( "Hello",
-           [ Def (Some (TMono (TCon "Bool")), "hello", ELit (Bool true)) ] ));
+         ( (),
+           "Hello",
+           [
+             Def
+               ( (),
+                 "hello",
+                 Some (Scheme.Type ((), Type.Con ((), "Bool"))),
+                 Expr.Lit ((), Bool ((), true)) );
+           ] ));
     test_parser_ast "top level polymorphic type"
       "module Hello = {
             def const : forall a b. a -> b -> a
               = \\x \\y x
           }"
       (Module
-         ( "Hello",
+         ( (),
+           "Hello",
            [
              Def
-               ( Some
-                   (TForall
-                      ([ "a"; "b" ], TArr (TVar "a", TArr (TVar "b", TVar "a")))),
+               ( (),
                  "const",
-                 ELam ("x", None, ELam ("y", None, EVar "x")) );
+                 Some
+                   (Scheme.Forall
+                      ( (),
+                        [ "a"; "b" ],
+                        Type.Arr
+                          ( (),
+                            Type.Var ((), "a"),
+                            Type.Arr ((), Type.Var ((), "b"), Type.Var ((), "a"))
+                          ) )),
+                 Expr.Lam
+                   ((), "x", None, Expr.Lam ((), "y", None, Expr.Var ((), "x")))
+               );
            ] ));
     test_parser_ast "let-binding type annotation"
       "module Hello = { def hello = let x : Bool = True in x }"
       (Module
-         ( "Hello",
+         ( (),
+           "Hello",
            [
              Def
-               ( None,
+               ( (),
                  "hello",
-                 ELet ("x", Some (TCon "Bool"), ELit (Bool true), EVar "x") );
+                 None,
+                 Expr.Let
+                   ( (),
+                     "x",
+                     Some (Type.Con ((), "Bool")),
+                     Expr.Lit ((), Bool ((), true)),
+                     Expr.Var ((), "x") ) );
            ] ));
     test_parser_ast "multi-parameter lambda"
       "module Hello = { def const : Int -> Int -> Int = \\x \\y x }"
       (Module
-         ( "Hello",
+         ( (),
+           "Hello",
            [
              Def
-               ( Some (TMono (TArr (TCon "Int", TArr (TCon "Int", TCon "Int")))),
+               ( (),
                  "const",
-                 ELam ("x", None, ELam ("y", None, EVar "x")) );
+                 Some
+                   (Scheme.Type
+                      ( (),
+                        Type.Arr
+                          ( (),
+                            Type.Con ((), "Int"),
+                            Type.Arr
+                              ((), Type.Con ((), "Int"), Type.Con ((), "Int"))
+                          ) )),
+                 Expr.Lam
+                   ((), "x", None, Expr.Lam ((), "y", None, Expr.Var ((), "x")))
+               );
            ] ));
     test_parser_ast "high order function type"
       "module Hello = { def hello : (Int -> Int) -> Int = \\f f 1 }"
       (Module
-         ( "Hello",
+         ( (),
+           "Hello",
            [
              Def
-               ( Some (TMono (TArr (TArr (TCon "Int", TCon "Int"), TCon "Int"))),
+               ( (),
                  "hello",
-                 ELam ("f", None, EApp (EVar "f", ELit (Int 1))) );
+                 Some
+                   (Scheme.Type
+                      ( (),
+                        Type.Arr
+                          ( (),
+                            Type.Arr
+                              ((), Type.Con ((), "Int"), Type.Con ((), "Int")),
+                            Type.Con ((), "Int") ) )),
+                 Expr.Lam
+                   ( (),
+                     "f",
+                     None,
+                     Expr.App
+                       ((), Expr.Var ((), "f"), Expr.Lit ((), Int ((), 1))) ) );
            ] ));
     test_parser_ast "match expression with custom constructor"
       "module Hello = {
@@ -216,17 +363,23 @@ let ast_tests =
       }"
       Ast.(
         Module
-          ( "Hello",
+          ( (),
+            "Hello",
             [
               Def
-                ( None,
+                ( (),
                   "hello",
-                  EMatch
-                    ( EVar "foo",
+                  None,
+                  Expr.Match
+                    ( (),
+                      Expr.Var ((), "foo"),
                       Non_empty.of_list
                         [
-                          (PCon ("Wibble", [ "x"; "y" ]), ELit (Int 1));
-                          (PCon ("Wobble", []), ELit (Int 0));
+                          ( Pat.Con
+                              ((), ("Wibble", ()), [ ("x", ()); ("y", ()) ]),
+                            Expr.Lit ((), Int ((), 1)) );
+                          ( Pat.Con ((), ("Wobble", ()), []),
+                            Expr.Lit ((), Int ((), 0)) );
                         ] ) );
             ] ))
     (* TODO: Match on Bool *);
@@ -238,12 +391,17 @@ let ast_tests =
       }"
       Ast.(
         Module
-          ( "Hello",
+          ( (),
+            "Hello",
             [
               Type
-                ( "AType",
+                ( (),
+                  "AType",
                   [],
-                  [ ("Wibble", [ TCon "Int"; TCon "Bool" ]); ("Wobble", []) ] );
+                  [
+                    ("Wibble", [ Type.Con ((), "Int"); Type.Con ((), "Bool") ]);
+                    ("Wobble", []);
+                  ] );
             ] ));
     test_parser_ast "type definition may ommit first pipe"
       "module Hello = {
@@ -251,18 +409,25 @@ let ast_tests =
       }"
       Ast.(
         Module
-          ( "Hello",
+          ( (),
+            "Hello",
             [
               Type
-                ( "AType",
+                ( (),
+                  "AType",
                   [],
-                  [ ("Wibble", [ TCon "Int"; TCon "Bool" ]); ("Wobble", []) ] );
+                  [
+                    ("Wibble", [ Type.Con ((), "Int"); Type.Con ((), "Bool") ]);
+                    ("Wobble", []);
+                  ] );
             ] ));
     test_parser_ast "type constructors are expressions"
       "module Hello = {
         def wibble = Wibble
       }"
-      Ast.(Module ("Hello", [ Def (None, "wibble", EVar "Wibble") ]));
+      Ast.(
+        Module
+          ((), "Hello", [ Def ((), "wibble", None, Expr.Var ((), "Wibble")) ]));
     test_parser_ast "polymorphic type definitions"
       "module Hello = {
         type Either a b =
@@ -271,12 +436,17 @@ let ast_tests =
       }"
       Ast.(
         Module
-          ( "Hello",
+          ( (),
+            "Hello",
             [
               Type
-                ( "Either",
+                ( (),
+                  "Either",
                   [ "a"; "b" ],
-                  [ ("Left", [ TVar "a" ]); ("Right", [ TVar "b" ]) ] );
+                  [
+                    ("Left", [ Type.Var ((), "a") ]);
+                    ("Right", [ Type.Var ((), "b") ]);
+                  ] );
             ] ));
     test_parser_ast "type application"
       "module Hello = {
@@ -285,13 +455,24 @@ let ast_tests =
       }"
       Ast.(
         Module
-          ( "Hello",
+          ( (),
+            "Hello",
             [
-              Type ("Maybe", [ "a" ], [ ("None", []); ("Some", [ TVar "a" ]) ]);
+              Type
+                ( (),
+                  "Maybe",
+                  [ "a" ],
+                  [ ("None", []); ("Some", [ Type.Var ((), "a") ]) ] );
               Def
-                ( Some (TForall ([ "a" ], TApp (TCon "Maybe", TVar "a"))),
+                ( (),
                   "foo",
-                  EVar "None" );
+                  Some
+                    (Scheme.Forall
+                       ( (),
+                         [ "a" ],
+                         Type.App
+                           ((), Type.Con ((), "Maybe"), Type.Var ((), "a")) )),
+                  Expr.Var ((), "None") );
             ] ));
     test_parser_ast "type definitions with parens"
       "module Hello = {
@@ -301,14 +482,20 @@ let ast_tests =
       }"
       Ast.(
         Module
-          ( "Hello",
+          ( (),
+            "Hello",
             [
               Type
-                ( "List",
+                ( (),
+                  "List",
                   [ "a" ],
                   [
                     ("Nil", []);
-                    ("Cons", [ TVar "a"; TApp (TCon "List", TVar "a") ]);
+                    ( "Cons",
+                      [
+                        Type.Var ((), "a");
+                        Type.App ((), Type.Con ((), "List"), Type.Var ((), "a"));
+                      ] );
                   ] );
             ] ));
     test_parser_ast "dangling lambda syntax"
@@ -319,14 +506,23 @@ let ast_tests =
       }"
       Ast.(
         Module
-          ( "Hello",
+          ( (),
+            "Hello",
             [
               Def
-                ( None,
+                ( (),
                   "main",
-                  EApp
-                    ( EApp (EVar "bind", EVar "tx"),
-                      ELam ("x", None, EApp (EVar "pure", EVar "x")) ) );
+                  None,
+                  Expr.App
+                    ( (),
+                      Expr.App ((), Expr.Var ((), "bind"), Expr.Var ((), "tx")),
+                      Expr.Lam
+                        ( (),
+                          "x",
+                          None,
+                          Expr.App
+                            ((), Expr.Var ((), "pure"), Expr.Var ((), "x")) ) )
+                );
             ] ));
     test_parser_ast "line comments"
       "-- start comment
@@ -338,14 +534,20 @@ let ast_tests =
       }-- end comment"
       Ast.(
         Module
-          ( "Hello",
+          ( (),
+            "Hello",
             [
               Type
-                ( "List",
+                ( (),
+                  "List",
                   [ "a" ],
                   [
                     ("Nil", []);
-                    ("Cons", [ TVar "a"; TApp (TCon "List", TVar "a") ]);
+                    ( "Cons",
+                      [
+                        Type.Var ((), "a");
+                        Type.App ((), Type.Con ((), "List"), Type.Var ((), "a"));
+                      ] );
                   ] );
             ] ));
   ]
