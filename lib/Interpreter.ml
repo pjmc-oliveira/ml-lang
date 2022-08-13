@@ -52,24 +52,23 @@ let rec eval (e : Ir.expr) (env : tm_env) : Value.t ref =
       | _ -> failwith ("Impossible if-cond not bool: " ^ Value.show !cond))
   | ELam (_, _, param, body) -> ref (Value.Closure { env; param; body })
   | EApp (_, func, arg) -> (
-      let arg' = defer arg env in
       let func = eval func env in
       (* Only evaluate to WHNF so that we can apply the constructor lazily *)
       let func = whnf func in
       match !func with
       | Closure { env = closure_ctx; param; body } ->
+          let arg' = defer arg env in
           let closure_ctx' = define param (ref arg') closure_ctx in
           eval body closure_ctx'
       | Con { head; arity; tail } ->
+          let arg' = defer arg env in
           (* TODO: there has to be a better way to deal with constructors *)
           ref (Value.Con { head; arity; tail = tail @ [ ref arg' ] })
       | Native func ->
-          (* TODO: Why not eval then force? *)
-          (* Defer to create a thunk value from the ast
+          (* Eval to create a thunk value from the ast
              then force to pass it into the native function *)
-          (* TODO: Did we not already defer arg? *)
-          let arg = defer arg env in
-          let arg = force (ref arg) in
+          let arg = eval arg env in
+          let arg = force arg in
           ref (func !arg)
       | _ ->
           failwith
@@ -96,20 +95,14 @@ let rec eval (e : Ir.expr) (env : tm_env) : Value.t ref =
 
 (** Force a value to weak-head normal form *)
 and whnf (v : Value.t ref) : Value.t ref =
-  (* TODO: Do we need to re-allocate the return values?
-           Or can we just return the original reference? *)
   match !v with
-  | Int n -> ref (Value.Int n)
-  | Bool b -> ref (Value.Bool b)
-  | Con { head; arity; tail } -> ref (Value.Con { head; arity; tail })
-  | Closure f -> ref (Value.Closure f)
+  | Int _ | Bool _ | Con _ | Closure _ | Native _ -> v
   | Thunk { env; expr } ->
       let expr = eval expr env in
       v := !expr;
       whnf expr
-  | Native _ -> v
   | Fix { env; name; expr } ->
-      let env' = define name (ref (Value.Fix { env; name; expr })) env in
+      let env' = define name v env in
       let expr = eval expr env' in
       v := !expr;
       (* TODO: should this be a recursive or base call? *)
@@ -117,29 +110,23 @@ and whnf (v : Value.t ref) : Value.t ref =
 
 (** Fully force a value to its normal form *)
 and force (v : Value.t ref) : Value.t ref =
-  (* TODO: Do we need to re-allocate the return values?
-           Or can we just return the original reference? *)
   match !v with
-  | Int n -> ref (Value.Int n)
-  | Bool b -> ref (Value.Bool b)
-  | Con { head; arity; tail } ->
-      let tail =
-        List.map
+  | Int _ | Bool _ | Closure _ | Native _ -> v
+  | Con { tail; _ } ->
+      let _ =
+        List.iter
           (fun v ->
             let v' = force v in
-            v := !v';
-            v')
+            v := !v')
           tail
       in
-      ref (Value.Con { head; arity; tail })
-  | Closure f -> ref (Value.Closure f)
+      v
   | Thunk { env; expr } ->
       let expr = eval expr env in
       v := !expr;
       force expr
-  | Native _ -> v
   | Fix { env; name; expr } ->
-      let env' = define name (ref (Value.Fix { env; name; expr })) env in
+      let env' = define name v env in
       let expr = eval expr env' in
       v := !expr;
       force expr
