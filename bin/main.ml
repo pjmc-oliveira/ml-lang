@@ -42,7 +42,7 @@ let run str =
     let* tks = lex str in
     let* cst = parse tks in
     let* tcst = solve cst in
-    let tast = Tcst.modu_to_tast tcst in
+    let tast = Desugar.module_ tcst in
     W.pure tast
   in
   match tast with
