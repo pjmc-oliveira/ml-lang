@@ -17,7 +17,7 @@ let string_of_scc scc =
 let suite =
   "SCC"
   >::: [
-         ( "finds strongly connnected components" >:: fun _ ->
+         ( "finds strongly connected components" >:: fun _ ->
            let input =
              Str_map.of_seq
                (List.to_seq
