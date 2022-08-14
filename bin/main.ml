@@ -51,8 +51,9 @@ let run str =
 
 let report res =
   match res with
-  | Error errs -> Ansi.pretty ~color:Red "Failure:\n" ^ errs
-  | Ok value -> Ansi.pretty ~color:Green "Success:\n" ^ Value.show value
+  | Error errs -> Ansi.pretty ~color:Red ~font:Bold "Failure:\n" ^ errs
+  | Ok value ->
+      Ansi.pretty ~color:Green ~font:Bold "Success:\n" ^ Value.show value
 
 let () =
   let args = Array.to_list Sys.argv in
