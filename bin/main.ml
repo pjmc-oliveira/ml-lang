@@ -12,7 +12,7 @@ open W.Syntax
 
 (* TODO: make this lazy? *)
 let read_lines path : string =
-  let ic = open_in (String.concat Filename.dir_sep path) in
+  let ic = open_in path in
   let try_read () = try Some (input_line ic) with End_of_file -> None in
   let rec loop lines =
     match try_read () with
@@ -51,14 +51,16 @@ let run str =
 
 let report res =
   match res with
-  | Error errs -> "Failure:\n" ^ errs
-  | Ok value -> "Success:\n" ^ Value.show value
-
-let source = read_lines [ "examples"; "hello.luz" ]
+  | Error errs -> Ansi.pretty ~color:Red "Failure:\n" ^ errs
+  | Ok value -> Ansi.pretty ~color:Green "Success:\n" ^ Value.show value
 
 let () =
-  print_endline
-    (report
-       (Result.map_error
-          (string_of_errors (Source.of_string source))
-          (run source)))
+  let args = Array.to_list Sys.argv in
+  match args with
+  | [ _script; path ] ->
+      let src = read_lines path in
+      let res =
+        Result.map_error (string_of_errors (Source.of_string src)) (run src)
+      in
+      print_endline (report res)
+  | _ -> print_endline "Usage: dune exec ml_lang <path>"

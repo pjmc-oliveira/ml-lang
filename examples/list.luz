@@ -1,0 +1,32 @@
+module List = {
+  type List a =
+    | Nil
+    | Cons a (List a)
+
+  def main = sum (range 1 100000)
+
+  def sum = fold_right plus 0
+
+  -- space leak! bad!
+  def fold_left = \f \acc \list
+    match list with
+    | Nil -> acc
+    | Cons x xs -> fold_left f (f acc x) xs
+    end
+
+  -- TODO: compiler should remove loop-invariant code: f, base
+  def fold_right = \f \base \list
+    match list with
+    | Nil -> base
+    | Cons x xs -> f x (fold_right f base xs)
+    end
+
+  def range = \start \stop
+    if lt stop start then
+      Nil
+    else
+      Cons start (range (add start 1) stop)
+
+  def plus = \x \y
+    add x y
+}

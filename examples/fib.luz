@@ -1,0 +1,42 @@
+module Fib = {
+  type List a =
+    | Nil
+    | Cons a (List a)
+
+  def main = nth 6 fibs
+
+  def fibs = Cons 0 (Cons 1 (zip_with add fibs (drop 1 fibs)))
+
+  type Maybe a =
+    | None
+    | Some a
+
+  def zip_with = \f \xs \ys
+    match xs with
+    | Nil -> Nil
+    | Cons x xs ->
+      match ys with
+      | Nil -> Nil
+      | Cons y ys -> Cons (f x y) (zip_with f xs ys)
+      end
+    end
+
+  def drop = \n \list
+    if le n 0 then
+      list
+    else
+      match list with
+      | Nil -> Nil
+      | Cons x xs -> drop (sub n 1) xs
+      end
+
+  def nth = \n \list
+    match list with
+    | Nil -> None
+    | Cons x xs ->
+      if le n 0 then
+        Some x
+      else
+        nth (sub n 1) xs
+    end
+}
