@@ -8,18 +8,18 @@ let pattern : Tcst.Pat.t -> Ir.pat = function
 (** Desugars a Tcst expression to Tast expression *)
 let expression : Tcst.Expr.t -> Ir.expr =
   Tcst.Expr.fold (function
-    | LitF ((_, ty), Int (_, n)) -> Ir.ELit (ty, Int n)
-    | LitF ((_, ty), Bool (_, b)) -> ELit (ty, Bool b)
-    | VarF ((_, ty), s) -> EVar (ty, s)
-    | LetF ((_, ty), n, _, d, b) -> ELet (ty, n, d, b)
-    | LetRecF ((_, ty), n, _, d, b) -> ELetRec (ty, n, d, b)
-    | IfF ((_, ty), c, t, f) -> EIf (ty, c, t, f)
-    | LamF ((_, ty, ty'), p, _, b) -> ELam (ty, ty', p, b)
-    | AppF ((_, ty), f, x) -> EApp (ty, f, x)
+    | LitF ((_, ty), Int (_, n)) -> Ir.Lit (ty, Int n)
+    | LitF ((_, ty), Bool (_, b)) -> Lit (ty, Bool b)
+    | VarF ((_, ty), s) -> Var (ty, s)
+    | LetF ((_, ty), n, _, d, b) -> Let (ty, n, d, b)
+    | LetRecF ((_, ty), n, _, d, b) -> LetRec (ty, n, d, b)
+    | IfF ((_, ty), c, t, f) -> If (ty, c, t, f)
+    | LamF ((_, ty, ty'), p, _, b) -> Lam (ty, ty', p, b)
+    | AppF ((_, ty), f, x) -> App (ty, f, x)
     | AnnF ((_, _), e, _) -> e
     | MatchF ((_, ty), e, bs) ->
         let bs = Non_empty.(to_list (map (fun (p, e) -> (pattern p, e)) bs)) in
-        EMatch (ty, e, bs))
+        Match (ty, e, bs))
 
 (** Desugars a Tcst ty_def to Tast ty_def *)
 let ty : Tcst.Binding.ty_def -> Ir.ty_def = function

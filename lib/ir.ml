@@ -6,15 +6,15 @@ type lit =
 type pat = PCon of string * string list [@@deriving show]
 
 type expr =
-  | ELit of Type.mono * lit
-  | EVar of Type.mono * string
-  | ELet of Type.mono * string * expr * expr
-  | ELetRec of Type.mono * string * expr * expr
-  | EIf of Type.mono * expr * expr * expr
+  | Lit of Type.mono * lit
+  | Var of Type.mono * string
+  | Let of Type.mono * string * expr * expr
+  | LetRec of Type.mono * string * expr * expr
+  | If of Type.mono * expr * expr * expr
   (* Type of [param] to [body] *)
-  | ELam of Type.mono * Type.mono * string * expr
-  | EApp of Type.mono * expr * expr
-  | EMatch of Type.mono * expr * (pat * expr) list
+  | Lam of Type.mono * Type.mono * string * expr
+  | App of Type.mono * expr * expr
+  | Match of Type.mono * expr * (pat * expr) list
 [@@deriving show]
 
 type ty_def =

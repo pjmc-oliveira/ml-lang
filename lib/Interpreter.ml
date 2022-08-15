@@ -29,29 +29,29 @@ let fix name expr env = Value.Fix { env; name; expr }
 (** Evaluate an expression in a context *)
 let rec eval (e : Ir.expr) (env : tm_env) : Value.t ref =
   match e with
-  | ELit (_, Int value) -> ref (Value.Int value)
-  | ELit (_, Bool value) -> ref (Value.Bool value)
-  | EVar (_, name) -> (
+  | Lit (_, Int value) -> ref (Value.Int value)
+  | Lit (_, Bool value) -> ref (Value.Bool value)
+  | Var (_, name) -> (
       match Env.lookup name env with
       | Some value -> value
       | None -> failwith ("Impossible unbound variable: " ^ name))
-  | ELet (_, name, def, body) ->
+  | Let (_, name, def, body) ->
       let thunk = defer def env in
       let env' = define name (ref thunk) env in
       eval body env'
-  | ELetRec (_, name, def, body) ->
+  | LetRec (_, name, def, body) ->
       let fixpoint = fix name def env in
       let env' = define name (ref fixpoint) env in
       eval body env'
-  | EIf (_, cond, con, alt) -> (
+  | If (_, cond, con, alt) -> (
       let cond = eval cond env in
       let cond = force cond in
       match !cond with
       | Bool true -> eval con env
       | Bool false -> eval alt env
       | _ -> failwith ("Impossible if-cond not bool: " ^ Value.show !cond))
-  | ELam (_, _, param, body) -> ref (Value.Closure { env; param; body })
-  | EApp (_, func, arg) -> (
+  | Lam (_, _, param, body) -> ref (Value.Closure { env; param; body })
+  | App (_, func, arg) -> (
       let func = eval func env in
       (* Only evaluate to WHNF so that we can apply the constructor lazily *)
       let func = whnf func in
@@ -73,7 +73,7 @@ let rec eval (e : Ir.expr) (env : tm_env) : Value.t ref =
       | _ ->
           failwith
             ("Impossible cannot apply to non-function: " ^ Value.show !func))
-  | EMatch (_, expr, alts) -> (
+  | Match (_, expr, alts) -> (
       let expr = eval expr env in
       let expr = whnf expr in
       match !expr with
