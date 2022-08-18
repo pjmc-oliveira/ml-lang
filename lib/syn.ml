@@ -59,7 +59,7 @@ module Make (X : Ext) (F : Applicative) = struct
       | Var of X.x_ty * string F.t
       | App of X.x_ty * t F.t * t F.t
       | Arr of X.x_ty * t F.t * t F.t
-    [@@deriving show]
+    [@@deriving show { with_path = false }]
 
     let map_x f = function
       | Con (x, n) -> Con (f x, n)
@@ -78,20 +78,20 @@ module Make (X : Ext) (F : Applicative) = struct
     type t =
       | Type of X.x_scheme * Type.t F.t
       | Forall of X.x_scheme * string F.t list * Type.t F.t
-    [@@deriving show]
+    [@@deriving show { with_path = false }]
   end
 
   module Lit = struct
     type t =
       | Int of X.x_lit * int F.t
       | Bool of X.x_lit * bool F.t
-    [@@deriving show]
+    [@@deriving show { with_path = false }]
   end
 
   module Pat = struct
     type t =
       | Con of X.x_pat * (string F.t * X.x_pat) * (string F.t * X.x_pat) list
-    [@@deriving show]
+    [@@deriving show { with_path = false }]
   end
 
   module Expr = struct
@@ -105,7 +105,7 @@ module Make (X : Ext) (F : Applicative) = struct
       | App of X.Expr.x_app * t F.t * t F.t
       | Ann of X.Expr.x_ann * t F.t * Type.t F.t
       | Match of X.Expr.x_match * t F.t * (Pat.t F.t * t F.t) F.t Non_empty.t
-    [@@deriving show]
+    [@@deriving show { with_path = false }]
 
     type 'a f =
       | LitF of X.Expr.x_lit * Lit.t F.t
@@ -118,7 +118,7 @@ module Make (X : Ext) (F : Applicative) = struct
       | AppF of X.Expr.x_app * 'a F.t * 'a F.t
       | AnnF of X.Expr.x_ann * 'a F.t * Type.t F.t
       | MatchF of X.Expr.x_match * 'a F.t * (Pat.t F.t * 'a F.t) F.t Non_empty.t
-    [@@deriving show]
+    [@@deriving show { with_path = false }]
 
     let f_to_t = function
       | LitF (x, lit) -> Lit (x, lit)
@@ -207,28 +207,29 @@ module Make (X : Ext) (F : Applicative) = struct
   module Binding = struct
     type tm_def =
       X.Binding.x_tm_def * string F.t * Scheme.t F.t option * Expr.t F.t
-    [@@deriving show]
+    [@@deriving show { with_path = false }]
 
-    type alt = string F.t * Type.t F.t list [@@deriving show]
+    type alt = string F.t * Type.t F.t list
+    [@@deriving show { with_path = false }]
 
     type ty_def =
       X.Binding.x_ty_def * string F.t * string F.t list * alt F.t list
-    [@@deriving show]
+    [@@deriving show { with_path = false }]
 
     type t =
       | Def of tm_def
       | Type of ty_def
-    [@@deriving show]
+    [@@deriving show { with_path = false }]
   end
 
   module Module = struct
     type t = Module of X.x_module * string F.t * Binding.t F.t list
-    [@@deriving show]
+    [@@deriving show { with_path = false }]
   end
 end
 
 module Identity = struct
-  type 'a t = 'a [@@deriving show]
+  type 'a t = 'a [@@deriving show { with_path = false }]
 
   let map f x = f x
   let traverse_result f x = f x
@@ -238,28 +239,28 @@ end
 module Ast =
   Make
     (struct
-      type x_ty = unit [@@deriving show]
-      type x_scheme = unit [@@deriving show]
-      type x_lit = unit [@@deriving show]
-      type x_pat = unit [@@deriving show]
+      type x_ty = unit [@@deriving show { with_path = false }]
+      type x_scheme = unit [@@deriving show { with_path = false }]
+      type x_lit = unit [@@deriving show { with_path = false }]
+      type x_pat = unit [@@deriving show { with_path = false }]
 
       module Expr = struct
-        type x_lit = unit [@@deriving show]
-        type x_var = unit [@@deriving show]
-        type x_let = unit [@@deriving show]
-        type x_if = unit [@@deriving show]
-        type x_lam = unit [@@deriving show]
-        type x_app = unit [@@deriving show]
-        type x_ann = unit [@@deriving show]
-        type x_match = unit [@@deriving show]
+        type x_lit = unit [@@deriving show { with_path = false }]
+        type x_var = unit [@@deriving show { with_path = false }]
+        type x_let = unit [@@deriving show { with_path = false }]
+        type x_if = unit [@@deriving show { with_path = false }]
+        type x_lam = unit [@@deriving show { with_path = false }]
+        type x_app = unit [@@deriving show { with_path = false }]
+        type x_ann = unit [@@deriving show { with_path = false }]
+        type x_match = unit [@@deriving show { with_path = false }]
       end
 
       module Binding = struct
-        type x_tm_def = unit [@@deriving show]
-        type x_ty_def = unit [@@deriving show]
+        type x_tm_def = unit [@@deriving show { with_path = false }]
+        type x_ty_def = unit [@@deriving show { with_path = false }]
       end
 
-      type x_module = unit [@@deriving show]
+      type x_module = unit [@@deriving show { with_path = false }]
     end)
     (Identity)
 
@@ -268,28 +269,28 @@ module Cst = struct
   include
     Make
       (struct
-        type x_ty = Source.Span.t [@@deriving show]
-        type x_scheme = Source.Span.t [@@deriving show]
-        type x_lit = Source.Span.t [@@deriving show]
-        type x_pat = Source.Span.t [@@deriving show]
+        type x_ty = Source.Span.t [@@deriving show { with_path = false }]
+        type x_scheme = Source.Span.t [@@deriving show { with_path = false }]
+        type x_lit = Source.Span.t [@@deriving show { with_path = false }]
+        type x_pat = Source.Span.t [@@deriving show { with_path = false }]
 
         module Expr = struct
-          type x_lit = Source.Span.t [@@deriving show]
-          type x_var = Source.Span.t [@@deriving show]
-          type x_let = Source.Span.t [@@deriving show]
-          type x_if = Source.Span.t [@@deriving show]
-          type x_lam = Source.Span.t [@@deriving show]
-          type x_app = Source.Span.t [@@deriving show]
-          type x_ann = Source.Span.t [@@deriving show]
-          type x_match = Source.Span.t [@@deriving show]
+          type x_lit = Source.Span.t [@@deriving show { with_path = false }]
+          type x_var = Source.Span.t [@@deriving show { with_path = false }]
+          type x_let = Source.Span.t [@@deriving show { with_path = false }]
+          type x_if = Source.Span.t [@@deriving show { with_path = false }]
+          type x_lam = Source.Span.t [@@deriving show { with_path = false }]
+          type x_app = Source.Span.t [@@deriving show { with_path = false }]
+          type x_ann = Source.Span.t [@@deriving show { with_path = false }]
+          type x_match = Source.Span.t [@@deriving show { with_path = false }]
         end
 
         module Binding = struct
-          type x_tm_def = Source.Span.t [@@deriving show]
-          type x_ty_def = Source.Span.t [@@deriving show]
+          type x_tm_def = Source.Span.t [@@deriving show { with_path = false }]
+          type x_ty_def = Source.Span.t [@@deriving show { with_path = false }]
         end
 
-        type x_module = Source.Span.t [@@deriving show]
+        type x_module = Source.Span.t [@@deriving show { with_path = false }]
       end)
       (Identity)
 
@@ -377,34 +378,50 @@ module Tcst = struct
   include
     Make
       (struct
-        type x_ty = Source.Span.t [@@deriving show]
-        type x_scheme = Source.Span.t [@@deriving show]
-        type x_lit = Source.Span.t [@@deriving show]
-        type x_pat = Source.Span.t [@@deriving show]
+        type x_ty = Source.Span.t [@@deriving show { with_path = false }]
+        type x_scheme = Source.Span.t [@@deriving show { with_path = false }]
+        type x_lit = Source.Span.t [@@deriving show { with_path = false }]
+        type x_pat = Source.Span.t [@@deriving show { with_path = false }]
 
         module Expr = struct
-          type x_lit = Source.Span.t * Type.mono [@@deriving show]
-          type x_var = Source.Span.t * Type.mono [@@deriving show]
-          type x_let = Source.Span.t * Type.mono [@@deriving show]
-          type x_if = Source.Span.t * Type.mono [@@deriving show]
-          type x_lam = Source.Span.t * Type.mono * Type.mono [@@deriving show]
-          type x_app = Source.Span.t * Type.mono [@@deriving show]
-          type x_ann = Source.Span.t * Type.mono [@@deriving show]
-          type x_match = Source.Span.t * Type.mono [@@deriving show]
+          type x_lit = Source.Span.t * Type.mono
+          [@@deriving show { with_path = false }]
+
+          type x_var = Source.Span.t * Type.mono
+          [@@deriving show { with_path = false }]
+
+          type x_let = Source.Span.t * Type.mono
+          [@@deriving show { with_path = false }]
+
+          type x_if = Source.Span.t * Type.mono
+          [@@deriving show { with_path = false }]
+
+          type x_lam = Source.Span.t * Type.mono * Type.mono
+          [@@deriving show { with_path = false }]
+
+          type x_app = Source.Span.t * Type.mono
+          [@@deriving show { with_path = false }]
+
+          type x_ann = Source.Span.t * Type.mono
+          [@@deriving show { with_path = false }]
+
+          type x_match = Source.Span.t * Type.mono
+          [@@deriving show { with_path = false }]
         end
 
         module Binding = struct
-          type x_tm_def = Source.Span.t * Type.poly [@@deriving show]
+          type x_tm_def = Source.Span.t * Type.poly
+          [@@deriving show { with_path = false }]
 
           type x_ty_def = Source.Span.t * Type.kind * (string * Ty.poly) list
-          [@@deriving show]
+          [@@deriving show { with_path = false }]
         end
 
         type x_module =
           Source.Span.t
           * (string * Type.poly) list
           * (string * Type.kind * (string * Ty.poly) list) list
-        [@@deriving show]
+        [@@deriving show { with_path = false }]
       end)
       (Identity)
 

@@ -28,7 +28,7 @@ type t =
   | UpperIdent of string
   | Int of int
   | Bool of bool
-[@@deriving show]
+[@@deriving show { with_path = false }]
 
 let to_string = function
   (* Keywords *)

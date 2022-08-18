@@ -1,7 +1,10 @@
 open Extensions
 
 module Line = struct
-  type t = Text of string | Quote of Source.Span.t [@@deriving show]
+  type t =
+    | Text of string
+    | Quote of Source.Span.t
+  [@@deriving show { with_path = false }]
 
   (** Gets source lines of a span *)
   let quote_lines (src : Source.t) (span : Source.span) : string list =
@@ -44,7 +47,12 @@ module Line = struct
 end
 
 module Kind = struct
-  type t = Lexer | Parser | Solver | Interpreter [@@deriving show]
+  type t =
+    | Lexer
+    | Parser
+    | Solver
+    | Interpreter
+  [@@deriving show { with_path = false }]
 
   let to_string = function
     | Lexer -> "Lexer"
@@ -53,8 +61,12 @@ module Kind = struct
     | Interpreter -> "Interpreter"
 end
 
-type t = { kind : Kind.t; lines : Line.t list; location : Source.Span.t option }
-[@@deriving show]
+type t = {
+  kind : Kind.t;
+  lines : Line.t list;
+  location : Source.Span.t option;
+}
+[@@deriving show { with_path = false }]
 
 let to_string src { kind; lines; location } =
   let lines = List.map (Line.to_string src) lines in

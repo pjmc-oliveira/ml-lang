@@ -1,4 +1,4 @@
-type 'a t = 'a * 'a list [@@deriving show]
+type 'a t = 'a * 'a list [@@deriving show { with_path = false }]
 
 (** Create a Non_empty.t from a list.
     Throws if list is empty *)

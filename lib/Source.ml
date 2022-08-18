@@ -1,5 +1,10 @@
 module Pos = struct
-  type t = { index : int; line : int; column : int } [@@deriving show]
+  type t = {
+    index : int;
+    line : int;
+    column : int;
+  }
+  [@@deriving show { with_path = false }]
 
   let empty = { index = 0; line = 1; column = 1 }
   let inc_line p = { index = p.index + 1; line = p.line + 1; column = 1 }
@@ -12,8 +17,13 @@ module Pos = struct
 end
 
 module Span = struct
-  type t = { index : int; line : int; column : int; length : int }
-  [@@deriving show]
+  type t = {
+    index : int;
+    line : int;
+    column : int;
+    length : int;
+  }
+  [@@deriving show { with_path = false }]
 
   let from ({ index; line; column } : Pos.t) ~(to_ : Pos.t) =
     { index; line; column; length = to_.index - index }
@@ -26,7 +36,12 @@ module Span = struct
     "ln " ^ string_of_int s.line ^ ", col " ^ string_of_int s.column
 end
 
-type t = { text : string; position : Pos.t } [@@deriving show]
+type t = {
+  text : string;
+  position : Pos.t;
+}
+[@@deriving show { with_path = false }]
+
 type pos = Pos.t
 type span = Span.t
 

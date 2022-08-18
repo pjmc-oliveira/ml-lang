@@ -2,7 +2,7 @@ type kind =
   | KType
   | KVar of string
   | KArrow of kind * kind
-[@@deriving show]
+[@@deriving show { with_path = false }]
 
 type mono =
   | Int
@@ -11,9 +11,9 @@ type mono =
   | App of mono * mono
   | Var of string
   | Arrow of mono * mono
-[@@deriving show]
+[@@deriving show { with_path = false }]
 
-type poly = Poly of string list * mono [@@deriving show]
+type poly = Poly of string list * mono [@@deriving show { with_path = false }]
 
 let rec pretty_kind = function
   | KType -> "Type"
