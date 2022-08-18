@@ -1,5 +1,5 @@
 (** This module takes in a graph and returns the sorted strongly connected
-    componenents of it
+    components of it
     source: https://www.programiz.com/dsa/strongly-connected-components *)
 module Make (Ord : sig
   type t
@@ -14,7 +14,7 @@ struct
     edges : Ord.t list Ord_map.t;
         (** A map from nodes to things they depend on *)
     visited : Ord_set.t;  (** A set of visited nodes *)
-    stack : Ord.t list;  (** A FILO stakc of the current traversal order *)
+    stack : Ord.t list;  (** A FILO stack of the current traversal order *)
   }
   (** The representation of the graph *)
 
@@ -26,10 +26,10 @@ struct
     let keys =
       List.map (fun (k, _) -> k) (List.of_seq (Ord_map.to_seq g.edges))
     in
-    let unvisted_keys =
+    let unvisited_keys =
       List.filter (fun k -> not (Ord_set.mem k g.visited)) keys
     in
-    match unvisted_keys with
+    match unvisited_keys with
     | [] -> None
     | k :: _ -> Some k
 
@@ -120,7 +120,7 @@ struct
     in
     loop [] g
 
-  (** Traverses the graph to find the strongly connected compoenents *)
+  (** Traverses the graph to find the strongly connected components *)
   let run (g : t) =
     let g' = traverse g in
     let g'' = reverse g' in

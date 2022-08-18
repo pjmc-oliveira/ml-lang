@@ -153,6 +153,7 @@ let find_entrypoint entrypoint tm_defs : Ir.tm_def option =
 
 let make_type_constructor ((head, tys) : string * Type.poly) =
   let arity = Type.get_arity (Type.get_mono_type tys) in
+  (* TODO: Make a lambda with fully saturated tail? *)
   Value.Con { head; arity; tail = [] }
 
 let add_type_constructors (TyDef { alts; _ } : Ir.ty_def) (env : tm_env) :
