@@ -8,13 +8,13 @@ module Tcst = Syn.Tcst
 type constraint_ctx =
   (* Mismatched types *)
   | Mismatch of {
-      left : Type.mono * Source.span;
-      right : Type.mono * Source.span;
+      left : Type.mono * Span.t;
+      right : Type.mono * Span.t;
       message : string;
     }
   (* Unexpected type *)
   | Unexpected of {
-      got : Type.mono * Source.span;
+      got : Type.mono * Span.t;
       message : string;
     }
 

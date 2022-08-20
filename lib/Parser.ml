@@ -1,7 +1,7 @@
 module Cst = Syn.Cst
 
 module Combinator = struct
-  type tokens = (Token.t * Source.span) list * Source.span option
+  type tokens = (Token.t * Span.t) list * Span.t option
   type errors = Error.t list
 
   module Consumed = struct
@@ -126,25 +126,25 @@ module Combinator = struct
     | (tk, loc) :: tks, _ ->
         (Consumed, Ok (Some tk, ((tk, loc) :: tks, Some loc)))
 
-  let next_position : Source.span t =
+  let next_position : Span.t t =
    fun tks ->
     match tks with
     | [], _ -> (Unconsumed, Error [ error [ Text "Unexpected EOF" ] ])
     | (_tk, loc) :: _tks, _ -> (Unconsumed, Ok (loc, tks))
 
-  let last_position : Source.span t =
+  let last_position : Span.t t =
    fun tks ->
     match tks with
     | _, None -> (Unconsumed, Error [ error [ Text "Unexpected EOF" ] ])
     | _, Some loc -> (Unconsumed, Ok (loc, tks))
 
-  let span_of (p : 'a t) : ('a * Source.span) t =
+  let span_of (p : 'a t) : ('a * Span.t) t =
     let* p1 = next_position in
     let* res = p in
     let* p2 = last_position in
-    pure (res, Source.Span.between p1 p2)
+    pure (res, Span.between p1 p2)
 
-  let with_span (p : (Source.span -> 'a) t) : 'a t =
+  let with_span (p : (Span.t -> 'a) t) : 'a t =
     let* f, sp = span_of p in
     pure (f sp)
 
@@ -361,7 +361,7 @@ and atom () =
          pure (fun _ -> expr)
      | _ -> fail_lines [ Text "Expected atom" ])
 
-let def : (Source.span -> Cst.Binding.t) t =
+let def : (Span.t -> Cst.Binding.t) t =
   let* () = accept Def in
   let* name = lower_identifier in
   let* ann = optional (accept Colon *> type_scheme ()) in
@@ -381,7 +381,7 @@ let ty_alternatives =
   let* alts = many (accept Pipe *> single_alt) in
   pure (alt :: alts)
 
-let ty_def : (Source.span -> Cst.Binding.t) t =
+let ty_def : (Span.t -> Cst.Binding.t) t =
   let* _ = accept Type in
   let* name = upper_identifier in
   let* vars = many lower_identifier in

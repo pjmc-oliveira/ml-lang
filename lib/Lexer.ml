@@ -28,7 +28,7 @@ let unexpected_char char loc =
     [ Text ("Unexpected character: '" ^ String.of_char char ^ "'"); Quote loc ]
 
 (** Lexes a token *)
-let token src : (Token.t * Source.span, Error.t) result * Source.t =
+let token src : (Token.t * Span.t, Error.t) result * Source.t =
   match Source.next src with
   | None -> (Error (fail [ Text "Unexpected EOF" ]), src)
   | Some (c, src') -> (
@@ -105,7 +105,7 @@ let rec skip src =
   | Some src'' -> skip src''
 
 (** Lexes all tokens *)
-let tokens src : (Token.t * Source.span) list option * Error.t list =
+let tokens src : (Token.t * Span.t) list option * Error.t list =
   let rec loop tks errs s =
     if Source.is_done s then
       (Some (List.rev tks), List.rev errs)

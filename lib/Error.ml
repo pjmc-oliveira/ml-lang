@@ -3,11 +3,11 @@ open Extensions
 module Line = struct
   type t =
     | Text of string
-    | Quote of Source.Span.t
+    | Quote of Span.t
   [@@deriving show { with_path = false }]
 
   (** Gets source lines of a span *)
-  let quote_lines (src : Source.t) (span : Source.span) : string list =
+  let quote_lines (src : Source.t) (span : Span.t) : string list =
     let lines = String.split_on_char '\n' src.text in
 
     let number_of_lines =
@@ -18,7 +18,7 @@ module Line = struct
     List.slice (span.line - 1) (span.line + number_of_lines - 1) lines
 
   (** Highlights a span, returns highlighted lines + an optional underlined terminator *)
-  let highlight lines (span : Source.span) pad_len =
+  let highlight lines (span : Span.t) pad_len =
     (* Span columns start at 1 and lines are padded by 'pad_len' spaces
        and an extra character *)
     if List.length lines = 1 then
@@ -64,7 +64,7 @@ end
 type t = {
   kind : Kind.t;
   lines : Line.t list;
-  location : Source.Span.t option;
+  location : Span.t option;
 }
 [@@deriving show { with_path = false }]
 
@@ -74,7 +74,7 @@ let to_string src { kind; lines; location } =
   let kind = Kind.to_string kind ^ " error" in
   let location =
     match location with
-    | Some location -> "\nat " ^ Source.Span.to_string location
+    | Some location -> "\nat " ^ Span.to_string location
     | None -> ""
   in
   String.concat "\n" [ kind; lines ] ^ location
