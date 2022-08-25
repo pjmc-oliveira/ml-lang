@@ -19,6 +19,8 @@ dune exec ml_lang <path_to_file>
 dune test
 ```
 
+## Features and Examples
+
 ### Built-in functions
 
 ```
@@ -41,8 +43,6 @@ not : Bool -> Bool
 and : Bool -> Bool -> Bool
 or  : Bool -> Bool -> Bool
 ```
-
-## Features and Examples
 
 ### Factorial
 
