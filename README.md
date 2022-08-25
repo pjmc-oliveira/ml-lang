@@ -2,6 +2,23 @@
 
 This is the implementation of a strongly typed, pure, and lazy, functional programming language for educational purposes.
 
+## Running
+
+- Install OCaml and Dune (https://ocaml.org/docs/up-and-running)
+  - OCaml 4.14
+  - Dune 3.3.1
+- Run program with:
+
+```
+dune exec ml_lang <path_to_file>
+```
+
+- Run tests with:
+
+```
+dune test
+```
+
 ## Features and Examples
 
 ### Factorial
