@@ -169,6 +169,18 @@ module Main = {
 
 The code above, with a large enough input will cause a segmentation fault. This is of course very bad, and somewhat surprising as we're not dealing with raw pointers in OCaml.
 
+### Only compares types by name
+
+```
+module Main = {
+  type Int = NotAnInt Bool
+
+  def main = 1 : Int
+}
+```
+
+In this example we define an 'Int' type locally and annotate an integer literal with the local type. The type checker should reject this, but it does not.
+
 ## Missing features and potential improvements
 
 - A REPL (currently the user can only execute files)
