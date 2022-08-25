@@ -19,6 +19,29 @@ dune exec ml_lang <path_to_file>
 dune test
 ```
 
+### Built-in functions
+
+```
+-- Int arithmetic
+add : Int -> Int -> Int
+sub : Int -> Int -> Int
+mul : Int -> Int -> Int
+div : Int -> Int -> Int
+
+-- Int comparison
+eq : Int -> Int -> Bool
+ne : Int -> Int -> Bool
+le : Int -> Int -> Bool
+ge : Int -> Int -> Bool
+lt : Int -> Int -> Bool
+gt : Int -> Int -> Bool
+
+-- Bool operations
+not : Bool -> Bool
+and : Bool -> Bool -> Bool
+or  : Bool -> Bool -> Bool
+```
+
 ## Features and Examples
 
 ### Factorial
